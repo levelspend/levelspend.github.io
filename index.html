@@ -157,7 +157,10 @@
               and any legacy: the amount, in today's dollars, you want left over
               at the end age for heirs or bequests. Enter 0 to spend everything.</li>
           <li>Enter any pension and Social Security amounts in today's dollars,
-              with the ages they begin. Enter 0 if none.</li>
+              with the ages they begin. Enter 0 if none. The second slots are for
+              a spouse's benefits or any additional income stream with its own
+              start age. Note the model treats a household as a single unit
+              living to the end age; it does not model survivor benefits.</li>
           <li>Under <b>Assumption</b>, set an expected long-run <b>real</b>
               (after-inflation) return of the portfolio. Real returns have
               historically ranged from roughly 2% to 7% depending on the era and
@@ -187,7 +190,9 @@
           <li>Enter your portfolio value, current age, planning end age, and any
               legacy (the amount you want left over at the end age).</li>
           <li>Enter pension and Social Security in today's dollars with their start
-              ages &mdash; including benefits you have not claimed yet.</li>
+              ages &mdash; including benefits you have not claimed yet. The second
+              slots are for a spouse's benefits or any additional income
+              stream.</li>
           <li>Set the real growth rate as in step 3 opposite.</li>
           <li>Read <b>Retirement consumption</b> in the stats row: the level annual
               amount (today's dollars, before tax) your portfolio plus future income
@@ -216,6 +221,7 @@ const state = {
   startBal: 20000, salary: 46000, savePct: 8, ratePct: 4,
   startAge: 30, retAge: 62, endAge: 95,
   penAmt: 12000, penAge: 60, ssAmt: 21000, ssAge: 67,
+  pen2Amt: 0, pen2Age: 65, ss2Amt: 0, ss2Age: 67,
   legacy: 0,
 };
 
@@ -232,19 +238,24 @@ function simulate() {
   const contribution = state.salary * s;
   const workSpend = state.salary * (1 - s);
 
-  const penStart = Math.max(state.penAge, R) + 1;
-  const ssStart  = Math.max(state.ssAge,  R) + 1;
+  const penStart  = Math.max(state.penAge,  R) + 1;
+  const ssStart   = Math.max(state.ssAge,   R) + 1;
+  const pen2Start = Math.max(state.pen2Age, R) + 1;
+  const ss2Start  = Math.max(state.ss2Age,  R) + 1;
   const pvDeferred = (amt, start) =>
     start > E ? 0 : amt * (aPV(r, E - R) - aPV(r, start - 1 - R));
-  const pvInc = pvDeferred(state.penAmt, penStart) + pvDeferred(state.ssAmt, ssStart);
+  const pvInc = pvDeferred(state.penAmt, penStart) + pvDeferred(state.ssAmt, ssStart)
+              + pvDeferred(state.pen2Amt, pen2Start) + pvDeferred(state.ss2Amt, ss2Start);
 
   const rows = [{ age: A0, balance: state.startBal, phase: "work",
-                  wd: -contribution, inc: 0, pen: 0, ss: 0, spend: workSpend }];
+                  wd: -contribution, inc: 0, pen: 0, ss: 0,
+                  p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend }];
   let bal = state.startBal;
   for (let age = A0 + 1; age <= R; age++) {
     bal = bal * (1 + r) + contribution;
     rows.push({ age, balance: bal, phase: "work",
-                wd: -contribution, inc: 0, pen: 0, ss: 0, spend: workSpend });
+                wd: -contribution, inc: 0, pen: 0, ss: 0,
+                p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend });
   }
   const atRet = bal;
 
@@ -253,15 +264,18 @@ function simulate() {
   const C = (atRet + pvInc - state.legacy * vL) * A_;
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
   for (let age = R + 1; age <= E; age++) {
-    const pen = age >= penStart ? state.penAmt : 0;
-    const ss  = age >= ssStart  ? state.ssAmt  : 0;
+    const p1 = age >= penStart  ? state.penAmt  : 0;
+    const p2 = age >= pen2Start ? state.pen2Amt : 0;
+    const s1 = age >= ssStart   ? state.ssAmt   : 0;
+    const s2 = age >= ss2Start  ? state.ss2Amt  : 0;
+    const pen = p1 + p2, ss = s1 + s2;
     const inc = pen + ss;
     const wd = C - inc;
     bal = bal * (1 + r) - wd;
     if (bal < minBal) { minBal = bal; minAge = age; }
     if (bal < -1e-6) { if (negFrom === null) negFrom = age; negTo = age; }
     rows.push({ age, balance: Math.max(bal, 0), phase: "retired",
-                wd, inc, pen, ss, spend: C });
+                wd, inc, pen, ss, p1, p2, s1, s2, spend: C });
   }
   const feasible = minBal >= -1e-6;
 
@@ -286,10 +300,13 @@ function levelGapAt(R) {
   const A0 = state.startAge;
   const E = state.endAge;
   const nW = R - A0, nR = E - R;
-  const penStart = Math.max(state.penAge, R) + 1;
-  const ssStart  = Math.max(state.ssAge,  R) + 1;
+  const penStart  = Math.max(state.penAge,  R) + 1;
+  const ssStart   = Math.max(state.ssAge,   R) + 1;
+  const pen2Start = Math.max(state.pen2Age, R) + 1;
+  const ss2Start  = Math.max(state.ss2Age,  R) + 1;
   const pvD = (amt, st) => st > E ? 0 : amt * (aPV(r, E - R) - aPV(r, st - 1 - R));
-  const pvInc = pvD(state.penAmt, penStart) + pvD(state.ssAmt, ssStart);
+  const pvInc = pvD(state.penAmt, penStart) + pvD(state.ssAmt, ssStart)
+              + pvD(state.pen2Amt, pen2Start) + pvD(state.ss2Amt, ss2Start);
   const BR = state.startBal * Math.pow(1 + r, nW) + state.salary * s * fvFactor(r, nW);
   const C = (BR + pvInc - state.legacy * Math.pow(1 + r, -nR)) * annuityFactor(r, nR);
   return C - state.salary * (1 - s);
@@ -396,6 +413,14 @@ function buildInputs() {
       moneyField("ssAmt", "Social Security ($/yr)", 500) +
       numField("ssAge", "Start age", 1) +
     '</div>' +
+    '<div class="grid2">' +
+      moneyField("pen2Amt", "Pension 2 ($/yr)", 500) +
+      numField("pen2Age", "Start age", 1) +
+    '</div>' +
+    '<div class="grid2">' +
+      moneyField("ss2Amt", "Social Security 2 ($/yr)", 500) +
+      numField("ss2Age", "Start age", 1) +
+    '</div>' +
 
     '<div class="head">Assumption</div>' +
     '<div class="grid2">' +
@@ -423,7 +448,8 @@ function buildInputs() {
       'decision variable\u2019s current value.</div>';
 
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
-                "penAmt","penAge","ssAmt","ssAge","legacy"];
+                "penAmt","penAge","ssAmt","ssAge",
+                "pen2Amt","pen2Age","ss2Amt","ss2Age","legacy"];
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
   const rateSlider = host.querySelector("#v-ratePct-slider");
@@ -470,6 +496,10 @@ function refreshInputs(m) {
   syncBox("v-penAge", state.penAge);
   syncBox("v-ssAmt", state.ssAmt);
   syncBox("v-ssAge", state.ssAge);
+  syncBox("v-pen2Amt", state.pen2Amt);
+  syncBox("v-pen2Age", state.pen2Age);
+  syncBox("v-ss2Amt", state.ss2Amt);
+  syncBox("v-ss2Age", state.ss2Age);
   syncBox("v-legacy", state.legacy);
 
   /* solve readouts */
@@ -600,12 +630,29 @@ function renderChart(m) {
       const d = "M" + pts.map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L") + " Z";
       svg.appendChild(el("path", { d, fill, "fill-opacity":op, stroke:"none" }));
     };
-    const fPen = d => d.pen;
-    const fPS  = d => d.pen + d.ss;
-    const fTop = d => Math.max(d.pen + d.ss, d.spend);
-    band(() => 0, fPen, "#3D6B9E", 0.34);
-    band(fPen, fPS, "#3D6B9E", 0.16);
-    band(fPS, fTop, "#8A5A2E", 0.10);
+    const f1 = d => d.p1;
+    const f2 = d => d.p1 + d.p2;
+    const f3 = d => d.p1 + d.p2 + d.s1;
+    const f4 = d => d.p1 + d.p2 + d.s1 + d.s2;
+    const fTop = d => Math.max(f4(d), d.spend);
+    band(() => 0, f1, "#3D6B9E", 0.34);
+    band(f1, f2, "#3D6B9E", 0.24);
+    band(f2, f3, "#3D6B9E", 0.16);
+    band(f3, f4, "#3D6B9E", 0.09);
+    band(f4, fTop, "#8A5A2E", 0.10);
+    /* hairline along the top of each live income band, so adjacent
+       same-hue bands read as distinct */
+    const edge = (fLow, fHigh) => {
+      if (!retRows.some(d => fHigh(d) - fLow(d) > 1)) return;
+      const pts = stepPts(fHigh);
+      const d = "M" + pts.map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L");
+      svg.appendChild(el("path", { d, fill:"none", stroke:"#3D6B9E",
+        "stroke-width":1, "stroke-opacity":0.55 }));
+    };
+    edge(() => 0, f1);
+    edge(f1, f2);
+    edge(f2, f3);
+    edge(f3, f4);
 
     const bandLabel = (txt, fLow, fHigh, color) => {
       const live = retRows.map((d, i) => ({ i, h: fHigh(d) - fLow(d) }))
@@ -618,9 +665,11 @@ function renderChart(m) {
         "text-anchor":"end", "font-size":11, fill:color,
         "class":"axis-label" }, txt));
     };
-    bandLabel("pension", () => 0, fPen, "#2C4F76");
-    bandLabel("Social Security", fPen, fPS, "#2C4F76");
-    bandLabel("withdrawal", fPS, fTop, "#6E4724");
+    bandLabel("pension", () => 0, f1, "#2C4F76");
+    bandLabel("pension 2", f1, f2, "#2C4F76");
+    bandLabel("Social Security", f2, f3, "#2C4F76");
+    bandLabel("Social Security 2", f3, f4, "#2C4F76");
+    bandLabel("withdrawal", f4, fTop, "#6E4724");
   }
 
   const iR = rows.findIndex(d => d.age === m.R);
@@ -709,11 +758,17 @@ function attachTooltip() {
       (retired
         ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
               fmt$(Math.abs(d.wd))) +
-          (d.pen > 0
-            ? row("Pension", '<span style="color:#3D6B9E">' + fmt$(d.pen) + "</span>")
+          (d.p1 > 0
+            ? row("Pension", '<span style="color:#3D6B9E">' + fmt$(d.p1) + "</span>")
             : "") +
-          (d.ss > 0
-            ? row("Social Security", '<span style="color:#3D6B9E">' + fmt$(d.ss) + "</span>")
+          (d.p2 > 0
+            ? row("Pension 2", '<span style="color:#3D6B9E">' + fmt$(d.p2) + "</span>")
+            : "") +
+          (d.s1 > 0
+            ? row("Social Security", '<span style="color:#3D6B9E">' + fmt$(d.s1) + "</span>")
+            : "") +
+          (d.s2 > 0
+            ? row("Social Security 2", '<span style="color:#3D6B9E">' + fmt$(d.s2) + "</span>")
             : "")
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
       row("Consumption", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
