@@ -50,14 +50,3 @@ in closed form; the retirement-age solve gives the latest whole-year age at
 which retirement spending does not exceed working spending (the exact,
 non-integer level point is shown alongside it). Cash flows use an annual, end-of-year convention.
 The equations are documented in a comment inside the file.
-
-This is the same family of ideas as VPW and TPAW (amortization-based variable
-withdrawal); those tools offer more features, and this one offers less to
-read, nothing to install, and nothing to trust but the math in front of you.
-
-## Scope
-
-This tool is intentionally minimal. Feature requests will likely be declined;
-forks are welcome — see LICENSE (MIT).
-
-This is not financial advice. It is arithmetic.
