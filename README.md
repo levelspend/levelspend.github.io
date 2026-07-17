@@ -2,8 +2,7 @@
 
 A single-file retirement planner based on amortization: it computes the level
 real (inflation-adjusted) consumption that your portfolio, savings, pension,
-and Social Security can sustain from now through a chosen end age, with the
-portfolio depleting to zero exactly at that age.
+and Social Security can sustain from now through a chosen end age, with the portfolio depleting to a chosen legacy amount (zero by default) exactly at that age.
 
 It answers two questions directly:
 
@@ -38,9 +37,7 @@ benefit estimates — and read off the recalculated plan.
 These omissions are intentional. The tool answers one question and answers it transparently: given a steady real return, what level of real spending is consistent with your resources? The complete model fits in about 80 lines of readable JavaScript inside the file.
 ## Method
 
-Retirement consumption is the annuity payment that amortizes the
-retirement-date portfolio plus the present value of future pension and Social
-Security over the remaining horizon. The savings-rate solve sets working
+Retirement consumption is the annuity payment that amortizes the retirement-date portfolio, plus the present value of future pension and Social Security, minus the present value of any legacy, over the remaining horizon. The savings-rate solve sets working
 consumption (salary minus savings) equal to retirement consumption and solves
 in closed form; the retirement-age solve gives the latest whole-year age at
 which retirement spending does not exceed working spending (the exact,
