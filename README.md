@@ -16,7 +16,7 @@ Both are solved in closed form and applied with one click.
 ## Use it
 
 **[Open the tool](https://levelspend.github.io/)** in your browser, or
-download `index.html` and open it locally — it is one self-contained file with
+download `index.html` and open it locally. It is one self-contained file with
 no dependencies, no server, and no build step. Nothing you enter leaves your
 browser; there is no tracking, storage, or network activity of any kind.
 Step-by-step instructions for both working and retired users are at the bottom
@@ -35,11 +35,7 @@ benefit estimates — and read off the recalculated plan.
   choose. No one knows this rate in advance; the honest way to use the tool is
   to try several values and see how much the results move.
 
-These omissions are intentional. The tool answers one question — given a
-steady real return, what level of real spending is consistent with your
-resources — and answers it transparently. The complete model fits in about 80
-lines of readable JavaScript inside the file.
-
+These omissions are intentional. The tool answers one question and answers it transparently: given a steady real return, what level of real spending is consistent with your resources? The complete model fits in about 80 lines of readable JavaScript inside the file.
 ## Method
 
 Retirement consumption is the annuity payment that amortizes the
