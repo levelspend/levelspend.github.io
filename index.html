@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LevelSpend — a level-spending retirement solver</title>
+<style>
+  :root {
+    --paper:#FAFAF7; --panel:#FFFFFF; --ink:#1C2433; --ink-soft:#5A6376;
+    --grid:#E6E8E3; --rule:#C9CCC4; --accum:#0E7C5B; --decum:#3D6B9E;
+    --spend:#8A5A2E; --good:#0E7C5B; --bad:#B3372E;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    padding:16px 22px;
+  }
+  .wrap { max-width:1280px; margin:0 auto; }
+  .serif { font-family:Charter,Georgia,"Times New Roman",serif; }
+  .cols { display:flex; gap:22px; align-items:flex-start; }
+  .left  { flex:0 0 360px; }
+  .right { flex:1 1 auto; min-width:0; position:sticky; top:16px; }
+  .card { background:var(--panel); border:1px solid var(--rule); border-radius:4px;
+          padding:14px 16px; }
+  .card + .card { margin-top:14px; }
+  /* how-to section */
+  .howto-cols { display:grid; grid-template-columns:1fr 1fr; gap:8px 28px; }
+  @media (max-width:900px) { .howto-cols { grid-template-columns:1fr; } }
+  .howto ol { margin:4px 0 8px; padding-left:20px; font-size:12.5px; line-height:1.5; }
+  .howto li { margin-bottom:5px; }
+  .howto .head:first-child { border-top:none; padding-top:0; margin-top:0; }
+  .lbl { font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+         color:var(--ink-soft); display:block; margin-bottom:2px; }
+  .note { color:var(--ink-soft); }
+  .head { font-family:Charter,Georgia,serif; font-size:14px;
+          border-top:1px solid var(--grid); padding-top:10px; margin:12px 0 8px; }
+  .head:first-child { border-top:none; padding-top:0; margin-top:0; }
+  .numbox {
+    width:100%; font-family:inherit; font-size:12.5px; color:var(--ink);
+    font-variant-numeric:tabular-nums; text-align:right;
+    border:1px solid var(--rule); border-radius:3px; padding:4px 7px;
+    background:#fff; outline:none;
+  }
+  .numbox:focus { border-color:var(--accum); }
+  .numbox::-webkit-outer-spin-button,
+  .numbox::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  .numbox { -moz-appearance:textfield; appearance:textfield; }
+  .unit { font-size:12px; color:var(--ink-soft); flex:none; }
+  /* a labeled field; rows of fields laid out in a grid */
+  .field { display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:9px 12px; margin-bottom:4px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px 12px; margin-bottom:4px; }
+  .money { display:flex; align-items:center; gap:3px; }
+  .money > .numbox { text-align:right; }
+  .pct { display:flex; align-items:center; gap:3px; }
+  #v-ratePct-slider { width:100%; margin:4px 0 0; accent-color:var(--accum); }
+  .slider-ends { display:flex; justify-content:space-between; font-size:10px;
+                 color:var(--ink-soft); margin:0 2px 8px; }
+  /* solve buttons */
+  .dv-row { display:grid; grid-template-columns:1fr 1.35fr; gap:9px 12px;
+            align-items:stretch; margin-bottom:6px; }
+  .dv-row .solve { align-self:end; }
+  .solve {
+    padding:6px 10px; border-radius:4px; cursor:pointer; color:#fff;
+    font-family:inherit; font-size:12px; font-weight:600; line-height:1.2;
+    border:none; text-align:left;
+  }
+  .solve-ret  { background:var(--decum); }
+  .solve-ret:hover  { background:#345d8a; }
+  .solve-save { background:var(--accum); }
+  .solve-save:hover { background:#0c6b4f; }
+  .solve-val { display:block; font-weight:400; font-size:11px; opacity:.92;
+               font-variant-numeric:tabular-nums; margin-top:2px; }
+  /* stats */
+  .stats { display:flex; gap:24px; flex-wrap:wrap; padding-bottom:12px;
+           margin-bottom:8px; border-bottom:1px solid var(--grid); }
+  .stat { min-width:120px; }
+  .stat .num { font-family:Charter,Georgia,serif; font-size:20px;
+               font-variant-numeric:tabular-nums; }
+  .stat .sub { font-size:10.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  #feasWarn {
+    background:#FBEAE8; border:1px solid var(--bad); border-radius:4px;
+    padding:9px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.4;
+    color:#7A241D;
+  }
+  #feasWarn b { color:var(--bad); }
+  #chartBox { position:relative; }
+  #tip {
+    position:absolute; pointer-events:none; display:none;
+    background:#fff; border:1px solid var(--rule); border-radius:3px;
+    padding:9px 12px; font-size:12.5px; box-shadow:0 2px 8px rgba(28,36,51,.10);
+    font-variant-numeric:tabular-nums; min-width:185px; z-index:5;
+  }
+  #tip .t-age { font-family:Charter,Georgia,serif; font-style:italic; margin-bottom:5px; }
+  #tip .row { display:flex; justify-content:space-between; gap:18px; }
+  svg text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .axis-label { font-family:Charter,Georgia,serif !important; font-style:italic; }
+  .masthead { display:flex; align-items:baseline; gap:12px; margin:2px 2px 12px; }
+  .site-name { font-family:Charter,Georgia,serif; font-size:21px; font-weight:600;
+               letter-spacing:0.2px; color:var(--ink); }
+  .site-tag { font-family:Charter,Georgia,serif; font-style:italic; font-size:13px;
+              color:var(--ink-soft); }
+  @media (max-width: 900px) {
+    .cols { flex-direction:column; }
+    .left { flex:1 1 auto; width:100%; }
+    .right { position:static; width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="masthead">
+  <span class="site-name">LevelSpend</span>
+  <span class="site-tag">a level-spending retirement solver</span>
+</div>
+<div class="cols">
+
+  <!-- ================= LEFT: inputs ================= -->
+  <div class="left">
+    <div class="card" id="inputs"></div>
+  </div>
+
+  <!-- ================= RIGHT: chart ================= -->
+  <div class="right">
+    <div class="card" style="padding:16px 16px 8px;">
+      <div id="feasWarn" style="display:none;"></div>
+      <div class="stats" id="stats"></div>
+      <div id="chartBox">
+        <svg id="chart" width="100%"></svg>
+        <div id="tip"></div>
+      </div>
+      <!--
+        Portfolio balance: left axis (accumulation green, drawdown blue, zero at end age).
+        Annual flows: right axis (consumption brown step line; pension+SS blue shaded).
+        Working consumption = salary - savings. Retirement consumption =
+        (B_ret + PV_inc)*A, B_ret = B0*G + salary*s*F, G=(1+r)^n, F=((1+r)^n-1)/r,
+        A=r/(1-(1+r)^-m); level consumption through the end age.
+        Level when s = s* = (1 - (B0*G + PV_inc)*A/salary)/(1 + F*A).
+      -->
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ================= HOW TO USE ================= -->
+<div class="wrap" style="margin-top:14px;">
+  <div class="card howto">
+    <div class="howto-cols">
+      <div>
+        <div class="head">If you are still working</div>
+        <ol>
+          <li>Under <b>Situation</b>, enter your salary, current portfolio value,
+              current age, and planning end age (an age you are unlikely to outlive).</li>
+          <li>Enter any pension and Social Security amounts in today's dollars,
+              with the ages they begin. Enter 0 if none.</li>
+          <li>Under <b>Assumption</b>, set an expected long-run <b>real</b>
+              (after-inflation) return of the portfolio. Real returns have
+              historically ranged from roughly 2% to 7% depending on the era and
+              starting valuations. No one knows this rate in advance; try several
+              values and see how much the results move.</li>
+          <li>Under <b>Decision variables</b>, enter the retirement age you have in
+              mind and the share of salary you currently save.</li>
+          <li>Read the chart and stats: if consumption is level (the brown
+              consumption line runs unbroken across the retirement age) and the
+              portfolio lasts to the end age, the plan is internally consistent.
+              If not, either
+              click <b>solve</b> next to retirement age (latest age at which
+              retirement spending stays at or below your working level) or
+              <b>solve</b> next to savings rate (rate that
+              makes your chosen retirement age work).</li>
+          <li>Revisit once a year, or after any major change in your finances:
+              update your age, portfolio value, and any other inputs that have
+              changed (salary, Social Security estimate, pension), and re-check.
+              The plan is meant to be recalculated, not set once.</li>
+        </ol>
+      </div>
+      <div>
+        <div class="head">If you are already retired</div>
+        <ol>
+          <li>Set <b>retirement age equal to your current age</b>, salary to 0, and
+              savings rate to 0. The working-phase inputs become irrelevant.</li>
+          <li>Enter your portfolio value, current age, and planning end age.</li>
+          <li>Enter pension and Social Security in today's dollars with their start
+              ages &mdash; including benefits you have not claimed yet.</li>
+          <li>Set the real growth rate as in step 3 opposite.</li>
+          <li>Read <b>Retirement consumption</b> in the stats row: the level annual
+              amount (today's dollars, before tax) your portfolio plus future income
+              can sustain through the end age.</li>
+          <li>Each year, or after any major change in your finances, refresh all
+              the inputs — age, portfolio value, and income estimates. The updated
+              <b>Retirement consumption</b> is your spending level for the year
+              ahead.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.45; margin-top:6px;">
+      All amounts are in today's dollars and pre-tax: withdrawals from traditional
+      (pre-tax) accounts are spendable only after income tax, which this tool does
+      not model. It also does not model required minimum distributions, account
+      types, or market volatility. It answers one question: given a steady real
+      return, what level of real spending is consistent with your resources.
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const state = {
+  startBal: 20000, salary: 46000, savePct: 8, ratePct: 4,
+  startAge: 30, retAge: 62, endAge: 95,
+  penAmt: 12000, penAge: 60, ssAmt: 21000, ssAge: 67,
+};
+
+const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
+const annuityFactor = (r, n) => r === 0 ? 1 / n : r / (1 - Math.pow(1 + r, -n));
+const aPV = (r, k) => k <= 0 ? 0 : (r === 0 ? k : (1 - Math.pow(1 + r, -k)) / r);
+
+function simulate() {
+  const r = state.ratePct / 100, s = state.savePct / 100;
+  const A0 = state.startAge;
+  const R = state.retAge;
+  const E = state.endAge;
+  const nWork = R - A0, nRet = E - R;
+  const contribution = state.salary * s;
+  const workSpend = state.salary * (1 - s);
+
+  const penStart = Math.max(state.penAge, R) + 1;
+  const ssStart  = Math.max(state.ssAge,  R) + 1;
+  const pvDeferred = (amt, start) =>
+    start > E ? 0 : amt * (aPV(r, E - R) - aPV(r, start - 1 - R));
+  const pvInc = pvDeferred(state.penAmt, penStart) + pvDeferred(state.ssAmt, ssStart);
+
+  const rows = [{ age: A0, balance: state.startBal, phase: "work",
+                  wd: -contribution, inc: 0, pen: 0, ss: 0, spend: workSpend }];
+  let bal = state.startBal;
+  for (let age = A0 + 1; age <= R; age++) {
+    bal = bal * (1 + r) + contribution;
+    rows.push({ age, balance: bal, phase: "work",
+                wd: -contribution, inc: 0, pen: 0, ss: 0, spend: workSpend });
+  }
+  const atRet = bal;
+
+  const A_ = annuityFactor(r, nRet);
+  const C = (atRet + pvInc) * A_;
+  let minBal = atRet, minAge = R, negFrom = null, negTo = null;
+  for (let age = R + 1; age <= E; age++) {
+    const pen = age >= penStart ? state.penAmt : 0;
+    const ss  = age >= ssStart  ? state.ssAmt  : 0;
+    const inc = pen + ss;
+    const wd = C - inc;
+    bal = bal * (1 + r) - wd;
+    if (bal < minBal) { minBal = bal; minAge = age; }
+    if (bal < -1e-6) { if (negFrom === null) negFrom = age; negTo = age; }
+    rows.push({ age, balance: Math.max(bal, 0), phase: "retired",
+                wd, inc, pen, ss, spend: C });
+  }
+  const feasible = minBal >= -1e-6;
+
+  const G = Math.pow(1 + r, nWork);
+  const sStar = (1 - (state.startBal * G + pvInc) * A_ / state.salary) /
+                (1 + fvFactor(r, nWork) * A_);
+
+  if (nWork === 0) {
+    rows[0].phase = "retired";
+    rows[0].spend = C;
+    rows[0].wd = C;
+    rows[0].inc = 0;
+  }
+
+  return { rows, atRet, S: C, workSpend, replacement: C / workSpend, sStar, pvInc,
+           R, E, nWork, nRet, A0, feasible, minBal, minAge, negFrom, negTo };
+}
+
+function levelGapAt(R) {
+  const r = state.ratePct / 100, s = state.savePct / 100;
+  const A0 = state.startAge;
+  const E = state.endAge;
+  const nW = R - A0, nR = E - R;
+  const penStart = Math.max(state.penAge, R) + 1;
+  const ssStart  = Math.max(state.ssAge,  R) + 1;
+  const pvD = (amt, st) => st > E ? 0 : amt * (aPV(r, E - R) - aPV(r, st - 1 - R));
+  const pvInc = pvD(state.penAmt, penStart) + pvD(state.ssAmt, ssStart);
+  const BR = state.startBal * Math.pow(1 + r, nW) + state.salary * s * fvFactor(r, nW);
+  const C = (BR + pvInc) * annuityFactor(r, nR);
+  return C - state.salary * (1 - s);
+}
+
+/* Latest retirement age at which retirement consumption does not exceed
+   working consumption (the floor of the exact level point). Errs toward a
+   small step DOWN at retirement rather than up, matching the usual direction
+   of retirement spending. Clamped at the current age. */
+function solveRStar() {
+  for (let R = state.startAge; R <= state.endAge - 1; R++)
+    if (levelGapAt(R) >= -1e-6) {
+      if (R === state.startAge || levelGapAt(R) <= 1e-6) return R;
+      return R - 1;
+    }
+  return null;
+}
+
+/* exact (non-integer) level crossing within (Rint-1, Rint); levelGapAt is
+   smooth in R, so plain bisection converges fast */
+function solveRStarExact(Rint) {
+  let lo = Rint - 1, hi = Rint;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (levelGapAt(mid) >= 0) hi = mid; else lo = mid;
+  }
+  return hi;
+}
+
+const fmt$ = v => (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
+function fmtAxis(v) {
+  const a = Math.abs(v), s = v < 0 ? "−" : "";
+  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
+  if (a >= 1e3) return s + "$" + Math.round(a / 1e3) + "k";
+  return s + "$" + Math.round(a);
+}
+function niceTicks(max, target) {
+  if (max <= 0) return [0];
+  const raw = max / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  let step = 10 * mag;
+  for (const m of [1, 2, 2.5, 5]) if (m * mag >= raw) { step = m * mag; break; }
+  const ticks = [];
+  for (let t = 0; t <= max + 1e-9; t += step) ticks.push(t);
+  return ticks;
+}
+
+/* ---------------- input form ---------------- */
+function clampVal(key, v) {
+  if (!Number.isFinite(v)) return null;
+  if (key === "startAge") return Math.min(Math.max(Math.round(v), 20), state.endAge - 1);
+  if (key === "retAge")
+    return Math.min(Math.max(Math.round(v), state.startAge), state.endAge - 1);
+  if (key === "endAge")  return Math.max(Math.round(v), state.startAge + 1);
+  if (key === "penAge" || key === "ssAge") return Math.max(Math.round(v), 0);
+  if (key === "savePct") return Math.min(Math.max(v, 0), 100);
+  return Math.max(v, 0);
+}
+
+function wireBox(key, box) {
+  box.addEventListener("focus", e => { const t = e.target; setTimeout(() => t.select(), 0); });
+  box.addEventListener("change", e => {
+    const v = clampVal(key, Number(e.target.value));
+    if (v === null) { e.target.value = state[key]; return; }
+    state[key] = v;
+    render();
+    pushHistory();
+  });
+}
+
+/* helpers to build a labeled field */
+function moneyField(key, label, step) {
+  return '<div class="field"><label class="lbl">' + label + '</label>' +
+    '<div class="money"><span class="unit">$</span>' +
+    '<input type="number" class="numbox" id="v-' + key + '" step="' + step + '"></div></div>';
+}
+function pctField(key, label, step) {
+  return '<div class="field"><label class="lbl">' + label + '</label>' +
+    '<div class="pct"><input type="number" class="numbox" id="v-' + key +
+    '" step="' + step + '"><span class="unit">%</span></div></div>';
+}
+function numField(key, label, step) {
+  return '<div class="field"><label class="lbl">' + label + '</label>' +
+    '<input type="number" class="numbox" id="v-' + key + '" step="' + step + '"></div>';
+}
+
+function buildInputs() {
+  const host = document.getElementById("inputs");
+  host.innerHTML =
+    '<div class="head">Situation</div>' +
+    '<div class="grid2">' +
+      moneyField("salary", "Salary", 1000) +
+      moneyField("startBal", "Starting portfolio", 10000) +
+    '</div>' +
+    '<div class="grid2">' +
+      numField("startAge", "Current age", 1) +
+      numField("endAge", "End age", 1) +
+    '</div>' +
+    '<div class="grid2">' +
+      moneyField("penAmt", "Pension ($/yr)", 500) +
+      numField("penAge", "Start age", 1) +
+    '</div>' +
+    '<div class="grid2">' +
+      moneyField("ssAmt", "Social Security ($/yr)", 500) +
+      numField("ssAge", "Start age", 1) +
+    '</div>' +
+
+    '<div class="head">Assumption</div>' +
+    '<div class="grid2">' +
+      pctField("ratePct", "Real growth rate", 0.1) +
+      '<div></div>' +
+    '</div>' +
+    '<input type="range" id="v-ratePct-slider" min="0" max="8" step="0.1" ' +
+      'aria-label="Real growth rate slider">' +
+    '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
+
+    '<div class="head">Decision variables</div>' +
+    '<div class="dv-row">' +
+      numField("retAge", "Retirement age", 1) +
+      '<button class="solve solve-ret" id="setRStar">solve' +
+        '<span class="solve-val" id="rStar"></span></button>' +
+    '</div>' +
+    '<div class="dv-row">' +
+      pctField("savePct", "Savings rate", 0.5) +
+      '<button class="solve solve-save" id="setSStar">solve' +
+        '<span class="solve-val" id="sStar"></span></button>' +
+    '</div>' +
+    '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+      'solve finds the value that makes spending level through the end age, ' +
+      'holding everything else fixed. Each solve is conditional on the other ' +
+      'decision variable\u2019s current value.</div>';
+
+  const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
+                "penAmt","penAge","ssAmt","ssAge"];
+  for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
+
+  const rateSlider = host.querySelector("#v-ratePct-slider");
+  rateSlider.addEventListener("input", e => {
+    state.ratePct = Number(e.target.value);
+    render();
+  });
+  rateSlider.addEventListener("change", () => pushHistory());
+
+
+  host.querySelector("#setRStar").addEventListener("click", () => {
+    const Rs = solveRStar();
+    if (Rs === null) return;
+    const v = clampVal("retAge", Rs);
+    if (v === null) return;
+    state.retAge = v;
+    render();
+    pushHistory();
+  });
+  host.querySelector("#setSStar").addEventListener("click", () => {
+    const m = simulate();
+    if (m.nWork === 0) return;
+    state.savePct = Math.min(100, Math.max(0, m.sStar * 100));
+    render();
+    pushHistory();
+  });
+}
+
+function refreshInputs(m) {
+  const syncBox = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = val;
+  };
+  syncBox("v-salary", state.salary);
+  syncBox("v-startBal", state.startBal);
+  syncBox("v-startAge", state.startAge);
+  syncBox("v-retAge", state.retAge);
+  syncBox("v-endAge", state.endAge);
+  syncBox("v-savePct", Math.round(state.savePct * 10) / 10);
+  syncBox("v-ratePct", state.ratePct);
+  const rSl = document.getElementById("v-ratePct-slider");
+  if (rSl && document.activeElement !== rSl) rSl.value = state.ratePct;
+  syncBox("v-penAmt", state.penAmt);
+  syncBox("v-penAge", state.penAge);
+  syncBox("v-ssAmt", state.ssAmt);
+  syncBox("v-ssAge", state.ssAge);
+
+  /* solve readouts */
+  const setBtn = document.getElementById("setSStar");
+  if (m.nWork === 0) {
+    document.getElementById("sStar").textContent = "n/a — no working years";
+    setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
+  } else {
+    setBtn.disabled = false; setBtn.style.opacity = ""; setBtn.style.cursor = "pointer";
+    document.getElementById("sStar").textContent =
+      m.sStar <= 0 ? "balance + income suffice" : "rate: " + (m.sStar * 100).toFixed(1) + "%";
+  }
+  const Rs = solveRStar();
+  let rTxt;
+  if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
+  else {
+    rTxt = "age: " + Rs;
+    if (levelGapAt(Rs) < -1e-6) {
+      const xr = Math.round(solveRStarExact(Rs + 1) * 10) / 10;
+      if (xr > Rs) rTxt += " (level near " + xr.toFixed(1) + ")";
+    }
+  }
+  document.getElementById("rStar").textContent = rTxt;
+}
+
+/* ---------------- stats ---------------- */
+function renderStats(m) {
+  const saveYr = state.salary * state.savePct / 100;
+  document.getElementById("stats").innerHTML =
+    (m.nWork === 0
+      ? stat("Savings", "—", "var(--ink-soft)", "no working years")
+      : stat("Savings", fmt$(saveYr) + "/yr", "var(--accum)",
+             fmt$(saveYr / 12) + "/mo")) +
+    stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--accum)", "") +
+    (m.nWork === 0
+      ? stat("Working consumption", "—", "var(--ink-soft)", "no working years")
+      : stat("Working consumption", fmt$(m.workSpend), "var(--ink)",
+             "salary − savings")) +
+    stat("Retirement consumption", fmt$(m.S), "var(--decum)", "");
+  function stat(l, v, c, sub) {
+    return '<div class="stat"><span class="lbl">' + l + '</span>' +
+      '<div class="num" style="color:' + c + '">' + v + '</div>' +
+      (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  }
+}
+
+/* ---------------- chart ---------------- */
+const SVG = "http://www.w3.org/2000/svg";
+function el(name, attrs, text) {
+  const e = document.createElementNS(SVG, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+let geom = null, lastRows = null;
+
+function renderChart(m) {
+  const svg = document.getElementById("chart");
+  const W = svg.clientWidth || 800;
+  const mT = 40, plotH = 380, mB = 40, mL = 66, mR = 66;
+  const H = mT + plotH + mB;
+  const plotB = mT + plotH;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("height", H);
+  svg.innerHTML = "";
+
+  const rows = m.rows;
+  const x0 = m.A0, x1 = m.E;
+  const innerW = W - mL - mR;
+  const X = age => mL + (age - x0) / (x1 - x0) * innerW;
+
+  const balMax = Math.max(...rows.map(d => d.balance)) * 1.06 || 1;
+  const Y1 = v => plotB - v / balMax * plotH;
+  const flowMax = Math.max(...rows.map(d => Math.max(d.spend, d.inc))) * 1.15 || 1;
+  const Y2 = v => plotB - v / flowMax * plotH;
+
+  const defs = el("defs", {});
+  for (const [id, color] of [["gWork", "#0E7C5B"], ["gRet", "#3D6B9E"]]) {
+    const g = el("linearGradient", { id, x1:0, y1:0, x2:0, y2:1 });
+    g.appendChild(el("stop", { offset:"0%", "stop-color":color, "stop-opacity":0.12 }));
+    g.appendChild(el("stop", { offset:"100%", "stop-color":color, "stop-opacity":0.015 }));
+    defs.appendChild(g);
+  }
+  svg.appendChild(defs);
+
+  const xStep = (x1 - x0) > 80 ? 10 : 5;
+  const xTicks = [];
+  for (let a = Math.ceil(x0 / xStep) * xStep; a <= x1; a += xStep) xTicks.push(a);
+
+  for (const t of niceTicks(balMax, 8)) {
+    svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:Y1(t), y2:Y1(t),
+      stroke:"#E6E8E3", "stroke-width":0.8 }));
+    svg.appendChild(el("text", { x:mL-8, y:Y1(t)+3.5, "text-anchor":"end",
+      "font-size":11, fill:"#3D6B9E" }, fmtAxis(t)));
+  }
+  for (const t of niceTicks(flowMax, 12)) {
+    svg.appendChild(el("line", { x1:W-mR, x2:W-mR+4, y1:Y2(t), y2:Y2(t),
+      stroke:"#8A5A2E", "stroke-width":1 }));
+    svg.appendChild(el("text", { x:W-mR+8, y:Y2(t)+3.5, "text-anchor":"start",
+      "font-size":11, fill:"#8A5A2E" }, fmtAxis(t)));
+  }
+  for (const a of xTicks)
+    svg.appendChild(el("line", { x1:X(a), x2:X(a), y1:mT, y2:plotB,
+      stroke:"#E6E8E3", "stroke-width":0.8 }));
+
+  svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:plotB, y2:plotB,
+    stroke:"#1C2433", "stroke-width":1 }));
+  svg.appendChild(el("line", { x1:mL, x2:mL, y1:mT, y2:plotB,
+    stroke:"#3D6B9E", "stroke-width":1 }));
+  svg.appendChild(el("line", { x1:W-mR, x2:W-mR, y1:mT, y2:plotB,
+    stroke:"#8A5A2E", "stroke-width":1 }));
+
+  /* stacked funding bands (retirement): pension on the bottom, Social Security
+     above it, portfolio withdrawal on top; the stack sums to consumption. */
+  const retRows = rows.filter(d => d.phase === "retired");
+  if (retRows.length > 1) {
+    const stepPts = f => {
+      const y0 = Y2(f(retRows[0]));
+      const pts = [[X(m.R), y0], [X(retRows[0].age), y0]];
+      for (let i = 1; i < retRows.length; i++) {
+        const y = Y2(f(retRows[i]));
+        pts.push([X(retRows[i - 1].age), y], [X(retRows[i].age), y]);
+      }
+      return pts;
+    };
+    const band = (fLow, fHigh, fill, op) => {
+      const pts = stepPts(fHigh).concat(stepPts(fLow).reverse());
+      const d = "M" + pts.map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L") + " Z";
+      svg.appendChild(el("path", { d, fill, "fill-opacity":op, stroke:"none" }));
+    };
+    const fPen = d => d.pen;
+    const fPS  = d => d.pen + d.ss;
+    const fTop = d => Math.max(d.pen + d.ss, d.spend);
+    band(() => 0, fPen, "#3D6B9E", 0.34);
+    band(fPen, fPS, "#3D6B9E", 0.16);
+    band(fPS, fTop, "#8A5A2E", 0.10);
+
+    const bandLabel = (txt, fLow, fHigh, color) => {
+      const live = retRows.map((d, i) => ({ i, h: fHigh(d) - fLow(d) }))
+                          .filter(o => o.h > 1);
+      if (!live.length) return;
+      const d0 = retRows[live[live.length - 1].i];
+      const yT = Y2(fHigh(d0)), yB = Y2(fLow(d0));
+      if (yB - yT < 15) return;
+      svg.appendChild(el("text", { x:X(d0.age) - 6, y:(yT + yB) / 2 + 4,
+        "text-anchor":"end", "font-size":11, fill:color,
+        "class":"axis-label" }, txt));
+    };
+    bandLabel("pension", () => 0, fPen, "#2C4F76");
+    bandLabel("Social Security", fPen, fPS, "#2C4F76");
+    bandLabel("withdrawal", fPS, fTop, "#6E4724");
+  }
+
+  const iR = rows.findIndex(d => d.age === m.R);
+  const ret = rows.slice(iR);
+  const pathOf = arr => arr.map((d,i)=>(i?"L":"M")+X(d.age).toFixed(1)+" "+Y1(d.balance).toFixed(1)).join(" ");
+  const areaOf = arr => pathOf(arr) + " L" + X(arr[arr.length-1].age).toFixed(1) + " " +
+    plotB + " L" + X(arr[0].age).toFixed(1) + " " + plotB + " Z";
+  if (iR > 0) {
+    const work = rows.slice(0, iR + 1);
+    svg.appendChild(el("path", { d:areaOf(work), fill:"url(#gWork)" }));
+    svg.appendChild(el("path", { d:pathOf(work), fill:"none", stroke:"#0E7C5B", "stroke-width":2.4 }));
+  }
+  svg.appendChild(el("path", { d:areaOf(ret), fill:"url(#gRet)" }));
+  svg.appendChild(el("path", { d:pathOf(ret), fill:"none", stroke:"#3D6B9E", "stroke-width":2.4 }));
+
+  let sp = "";
+  rows.forEach((d, i) => {
+    const px = X(d.age).toFixed(1), py = Y2(d.spend).toFixed(1);
+    if (i === 0) sp = "M" + px + " " + py;
+    else sp += " V" + py + " H" + px;
+  });
+  svg.appendChild(el("path", { d:sp, fill:"none", stroke:"#8A5A2E", "stroke-width":2 }));
+
+  if (m.R > m.A0) {
+    svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
+      stroke:"#1C2433", "stroke-width":1, "stroke-dasharray":"4 3" }));
+    svg.appendChild(el("text", { x:X(m.R), y:mT-8, "text-anchor":"middle",
+      "font-size":12.5, fill:"#1C2433", "class":"axis-label" }, "retire " + m.R));
+  }
+  svg.appendChild(el("circle", { cx:X(m.R), cy:Y1(m.atRet), r:3.5, fill:"#fff",
+    stroke:"#1C2433", "stroke-width":1.6 }));
+  svg.appendChild(el("text", { x:X(m.R) + (m.R > m.A0 ? 8 : 6),
+    y:Y1(m.atRet) + (m.R > m.A0 ? 14 : -8),
+    "text-anchor":"start", "font-size":12.5,
+    fill:"#1C2433", "class":"axis-label" }, fmtAxis(m.atRet)));
+
+  svg.appendChild(el("text", { x:mL-8, y:mT-22, "text-anchor":"start",
+    "font-size":11, fill:"#3D6B9E", "class":"axis-label" }, "portfolio (left)"));
+  svg.appendChild(el("text", { x:W-mR+8, y:mT-22, "text-anchor":"end",
+    "font-size":11, fill:"#8A5A2E", "class":"axis-label" }, "spending (right)"));
+
+  for (const a of xTicks)
+    svg.appendChild(el("text", { x:X(a), y:plotB+16, "text-anchor":"middle",
+      "font-size":11, fill:"#5A6376" }, a));
+  svg.appendChild(el("text", { x:(mL + (W-mR))/2, y:plotB+33, "text-anchor":"middle",
+    "font-size":12, fill:"#5A6376", "class":"axis-label" }, "age"));
+
+  const cross = el("g", { id:"cross", visibility:"hidden" });
+  cross.appendChild(el("line", { id:"crossLine", y1:mT, y2:plotB,
+    stroke:"#5A6376", "stroke-width":0.8, "stroke-dasharray":"2 3" }));
+  cross.appendChild(el("circle", { id:"crossDot", r:3.5, fill:"#fff", "stroke-width":1.8 }));
+  svg.appendChild(cross);
+
+  geom = { X, Y1, mL, mR, W, x0, x1 };
+  lastRows = rows;
+}
+
+function attachTooltip() {
+  const svg = document.getElementById("chart");
+  const tip = document.getElementById("tip");
+  const box = document.getElementById("chartBox");
+
+  svg.addEventListener("mousemove", e => {
+    if (!geom || !lastRows) return;
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    if (mx < geom.mL || mx > geom.W - geom.mR) { hide(); return; }
+    const age = Math.round(geom.x0 + (mx - geom.mL) / (geom.W - geom.mL - geom.mR) * (geom.x1 - geom.x0));
+    const d = lastRows.find(r => r.age === age);
+    if (!d) { hide(); return; }
+    const retired = d.phase === "retired";
+    const color = retired ? "#3D6B9E" : "#0E7C5B";
+
+    const cross = svg.querySelector("#cross");
+    cross.setAttribute("visibility", "visible");
+    const px = geom.X(d.age);
+    const line = svg.querySelector("#crossLine");
+    line.setAttribute("x1", px); line.setAttribute("x2", px);
+    const dot = svg.querySelector("#crossDot");
+    dot.setAttribute("cx", px); dot.setAttribute("cy", geom.Y1(d.balance));
+    dot.setAttribute("stroke", color);
+
+    tip.innerHTML =
+      '<div class="t-age">Age ' + d.age + ' · ' + (retired ? "retired" : "working") + '</div>' +
+      row("Balance", '<b style="color:' + color + '">' + fmt$(d.balance) + "</b>") +
+      (retired
+        ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
+              fmt$(Math.abs(d.wd))) +
+          (d.pen > 0
+            ? row("Pension", '<span style="color:#3D6B9E">' + fmt$(d.pen) + "</span>")
+            : "") +
+          (d.ss > 0
+            ? row("Social Security", '<span style="color:#3D6B9E">' + fmt$(d.ss) + "</span>")
+            : "")
+        : row("Contribution", fmt$(Math.abs(d.wd)))) +
+      row("Consumption", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
+    tip.style.display = "block";
+    const bw = box.clientWidth, tw = tip.offsetWidth;
+    let left = px + 14;
+    if (left + tw > bw - 4) left = px - tw - 14;
+    tip.style.left = left + "px";
+    tip.style.top = (e.clientY - box.getBoundingClientRect().top - 20) + "px";
+
+    function row(l, v) {
+      return '<div class="row"><span style="color:#5A6376">' + l + "</span><span>" +
+        v + "</span></div>";
+    }
+  });
+  svg.addEventListener("mouseleave", hide);
+  function hide() {
+    tip.style.display = "none";
+    const c = svg.querySelector("#cross");
+    if (c) c.setAttribute("visibility", "hidden");
+  }
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  const m = simulate();
+  refreshInputs(m);
+  renderStats(m);
+  renderChart(m);
+
+  const warn = document.getElementById("feasWarn");
+  if (!m.feasible) {
+    warn.style.display = "block";
+    warn.innerHTML = "<b>Not feasible.</b> Portfolio reaches zero at age " + m.negFrom + ".";
+  } else {
+    warn.style.display = "none";
+  }
+}
+
+/* ---------------- input history (browser Back/Forward) ----------------
+   each committed input change or solve press pushes a state snapshot, so the
+   browser Back button steps through previous inputs; popstate restores without
+   pushing. pushState is wrapped because some browsers restrict it on file:// */
+let lastSnap = null;
+function pushHistory() {
+  const snap = JSON.stringify(state);
+  if (snap === lastSnap) return;
+  try { history.pushState(JSON.parse(snap), ""); } catch (e) { /* file:// may block */ }
+  lastSnap = snap;
+}
+window.addEventListener("popstate", e => {
+  if (!e.state) return;
+  Object.assign(state, e.state);
+  lastSnap = JSON.stringify(state);
+  render();
+});
+
+buildInputs();
+attachTooltip();
+render();
+lastSnap = JSON.stringify(state);
+try { history.replaceState(JSON.parse(lastSnap), ""); } catch (e) { /* file:// may block */ }
+let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(render, 120); });
+</script>
+</body>
+</html>
