@@ -52,18 +52,25 @@
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:9px 12px; margin-bottom:4px; }
   .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px 12px; margin-bottom:4px; }
   .grid-aal { display:grid; grid-template-columns:0.7fr 0.7fr 1.6fr; gap:9px 12px; margin-bottom:4px; }
+  .grid-inc { display:grid; grid-template-columns:1.6fr 0.7fr 0.7fr; gap:9px 12px; margin-bottom:4px; }
   .money { display:flex; align-items:center; gap:3px; }
   .money > .numbox { text-align:right; }
   .pct { display:flex; align-items:center; gap:3px; }
-  #v-ratePct-slider { width:100%; margin:4px 0 0; accent-color:var(--accum); }
+  .rate-sep { border-top:1px solid var(--grid); padding-top:10px; margin-top:12px; }
+  .rate-row { display:grid; grid-template-columns:0.45fr 1.55fr; gap:9px 12px;
+              align-items:center; margin-bottom:6px; }
+  .rate-row .numbox { font-size:12px; padding:4px 6px; }
+  .slider-wrap { padding-bottom:2px; }
+  #v-ratePct-slider { width:100%; margin:0; accent-color:var(--accum); }
   .slider-ends { display:flex; justify-content:space-between; font-size:10px;
-                 color:var(--ink-soft); margin:0 2px 8px; }
+                 color:var(--ink-soft); margin:1px 2px 0; }
   .adv { margin:2px 0 8px; }
   .adv summary { cursor:pointer; font-size:12px; font-weight:600;
                  color:var(--ink-soft); padding:2px 0; user-select:none; }
   .adv[open] summary { margin-bottom:6px; }
   .adv-check { display:flex; align-items:center; gap:7px; font-size:12px;
                color:var(--ink); margin:0 0 6px; cursor:pointer; }
+  .adv .lbl { white-space:nowrap; }
   /* solve buttons */
   .dv-row { display:grid; grid-template-columns:1fr 1.35fr; gap:9px 12px;
             align-items:stretch; margin-bottom:6px; }
@@ -72,7 +79,13 @@
     padding:6px 10px; border-radius:4px; cursor:pointer; color:#fff;
     font-family:inherit; font-size:12px; font-weight:600; line-height:1.2;
     border:none; text-align:left;
+    box-shadow:0 1px 3px rgba(28,36,51,0.35);
+    transition:transform 0.06s, box-shadow 0.06s;
   }
+  .solve:hover { transform:translateY(-1px);
+                 box-shadow:0 2px 5px rgba(28,36,51,0.4); }
+  .solve:active { transform:translateY(0);
+                  box-shadow:inset 0 1px 3px rgba(0,0,0,0.3); }
   .solve-ret  { background:var(--decum); }
   .solve-ret:hover  { background:#345d8a; }
   .solve-save { background:var(--accum); }
@@ -139,8 +152,8 @@
       </div>
       <!--
         Portfolio balance: left axis (accumulation green, drawdown blue, zero at end age).
-        Annual flows: right axis (consumption brown step line; pension+SS blue shaded).
-        Working consumption = salary - savings. Retirement consumption =
+        Annual flows: right axis (spending brown step line; pension+SS blue shaded).
+        Working spending = salary - savings. Retirement spending =
         (B_ret + PV_inc - L*(1+r)^-m)*A, with legacy L left at the end age;
         B_ret = B0*G + salary*s*F, G=(1+r)^n, F=((1+r)^n-1)/r, A=r/(1-(1+r)^-m).
         Level when s = s* = (1 - (B0*G + PV_inc - L*(1+r)^-m)*A/salary)/(1 + F*A).
@@ -158,26 +171,28 @@
       <div>
         <div class="head">If you are still working</div>
         <ol>
-          <li>Under <b>Situation</b>, enter your salary, current portfolio value,
+          <li>Enter your salary, current portfolio value,
               current age, planning end age (an age you are unlikely to outlive),
               and any legacy: the amount, in today's dollars, you want left over
               at the end age for heirs or bequests. Enter 0 to spend everything.</li>
           <li>Enter any pension and Social Security amounts in today's dollars,
-              with the ages they begin. Enter 0 if none. The second slots are for
-              a spouse's benefits or any additional income stream with its own
-              start age. Note the model treats a household as a single unit
-              living to the end age; it does not model survivor benefits. If a
+              with the ages they begin. Enter 0 if none. A spouse's benefits (or any
+              additional income stream) go under <b>Spouse</b>. Each stream can also be given a stop age if it ends
+              before the end age; leave it blank to run to the end. Stop ages can
+              represent benefits ending at an expected death, such as a pension
+              without survivor benefits or the smaller of a couple's two Social
+              Security checks. Spending itself stays level to the end age. If a
               pension pays a fixed amount with no inflation adjustment, see
               <b>Advanced</b> below the income fields.</li>
-          <li>Under <b>Assumption</b>, set an expected long-run <b>real</b>
-              (after-inflation) return of the portfolio. Real returns have
-              historically ranged from roughly 2% to 7% depending on the era and
-              starting valuations. No one knows this rate in advance; try several
-              values and see how much the results move.</li>
+          <li>Set the expected long-run <b>portfolio growth rate</b>. This is a
+              real (after-inflation) return: real returns have historically ranged
+              from roughly 2% to 7% depending on the era and starting valuations.
+              No one knows this rate in advance; try several values and see how
+              much the results move.</li>
           <li>Under <b>Decision variables</b>, enter the retirement age you have in
               mind and the share of salary you currently save.</li>
-          <li>Read the chart and stats: if consumption is level (the brown
-              consumption line runs unbroken across the retirement age) and the
+          <li>Read the chart and stats: if spending is level (the brown
+              spending line runs unbroken across the retirement age) and the
               portfolio lasts to the end age, the plan is internally consistent.
               If not, either
               click <b>solve</b> next to retirement age (latest age at which
@@ -198,16 +213,17 @@
           <li>Enter your portfolio value, current age, planning end age, and any
               legacy (the amount you want left over at the end age).</li>
           <li>Enter pension and Social Security in today's dollars with their start
-              ages &mdash; including benefits you have not claimed yet. The second
-              slots are for a spouse's benefits or any additional income
-              stream.</li>
-          <li>Set the real growth rate as in step 3 opposite.</li>
-          <li>Read <b>Retirement consumption</b> in the stats row: the level annual
+              ages &mdash; including benefits you have not claimed yet. A spouse's benefits (or any
+              additional income stream) go under <b>Spouse</b>.
+              A stop age ends a stream early; leave it blank to run to the end
+              age.</li>
+          <li>Set the portfolio growth rate as in step 3 opposite.</li>
+          <li>Read <b>Retirement spending</b> in the stats row: the level annual
               amount (today's dollars, before tax) your portfolio plus future income
               can sustain through the end age.</li>
           <li>Each year, or after any major change in your finances, refresh all
               the inputs — age, portfolio value, and income estimates. The updated
-              <b>Retirement consumption</b> is your spending level for the year
+              <b>Retirement spending</b> is your spending level for the year
               ahead.</li>
         </ol>
       </div>
@@ -228,8 +244,8 @@
 const state = {
   startBal: 20000, salary: 46000, savePct: 8, ratePct: 4,
   startAge: 30, retAge: 62, endAge: 95,
-  penAmt: 12000, penAge: 60, ssAmt: 21000, ssAge: 67,
-  pen2Amt: 0, pen2Age: 65, ss2Amt: 0, ss2Age: 67,
+  penAmt: 12000, penAge: 60, penStop: 0, ssAmt: 21000, ssAge: 67, ssStop: 0,
+  pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true,
 };
@@ -256,17 +272,22 @@ function simulate() {
      stream declines in real terms by (1+infl) per year from TODAY, so its PV
      uses the combined rate q = (1+r)(1+infl)-1 and an erosion factor for the
      years between now and retirement. */
-  const pvStream = (amt, start, cola) => {
-    if (start > E) return 0;
-    if (cola) return amt * (aPV(r, E - R) - aPV(r, start - 1 - R));
+  /* stop = last paid age (funds the year ending on that birthday);
+     a raw stop of 0 means the stream runs to the end age. */
+  const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
+  const pvStream = (amt, start, stop, cola) => {
+    if (start > stop) return 0;
+    if (cola) return amt * (aPV(r, stop - R) - aPV(r, start - 1 - R));
     const q = (1 + r) * (1 + infl) - 1;
     return amt * Math.pow(1 + infl, -(R - A0)) *
-           (aPV(q, E - R) - aPV(q, start - 1 - R));
+           (aPV(q, stop - R) - aPV(q, start - 1 - R));
   };
-  const pvInc = pvStream(state.penAmt, penStart, state.penCola)
-              + pvStream(state.ssAmt, ssStart, true)
-              + pvStream(state.pen2Amt, pen2Start, state.pen2Cola)
-              + pvStream(state.ss2Amt, ss2Start, true);
+  const penStop  = stopOf(state.penStop),  ssStop  = stopOf(state.ssStop);
+  const pen2Stop = stopOf(state.pen2Stop), ss2Stop = stopOf(state.ss2Stop);
+  const pvInc = pvStream(state.penAmt, penStart, penStop, state.penCola)
+              + pvStream(state.ssAmt, ssStart, ssStop, true)
+              + pvStream(state.pen2Amt, pen2Start, pen2Stop, state.pen2Cola)
+              + pvStream(state.ss2Amt, ss2Start, ss2Stop, true);
 
   const rows = [{ age: A0, balance: state.startBal, phase: "work",
                   wd: -contribution, inc: 0, pen: 0, ss: 0,
@@ -285,14 +306,14 @@ function simulate() {
   const C = (atRet + pvInc - state.legacy * vL) * A_;
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
   for (let age = R + 1; age <= E; age++) {
-    const p1 = age >= penStart
+    const p1 = (age >= penStart && age <= penStop)
       ? (state.penCola  ? state.penAmt  : state.penAmt  * Math.pow(1 + infl, -(age - A0)))
       : 0;
-    const p2 = age >= pen2Start
+    const p2 = (age >= pen2Start && age <= pen2Stop)
       ? (state.pen2Cola ? state.pen2Amt : state.pen2Amt * Math.pow(1 + infl, -(age - A0)))
       : 0;
-    const s1 = age >= ssStart   ? state.ssAmt   : 0;
-    const s2 = age >= ss2Start  ? state.ss2Amt  : 0;
+    const s1 = (age >= ssStart  && age <= ssStop)  ? state.ssAmt  : 0;
+    const s2 = (age >= ss2Start && age <= ss2Stop) ? state.ss2Amt : 0;
     const pen = p1 + p2, ss = s1 + s2;
     const inc = pen + ss;
     const wd = C - inc;
@@ -330,24 +351,25 @@ function levelGapAt(R) {
   const pen2Start = Math.max(state.pen2Age, R) + 1;
   const ss2Start  = Math.max(state.ss2Age,  R) + 1;
   const infl = state.inflPct / 100;
-  const pvD = (amt, st, cola) => {
-    if (st > E) return 0;
-    if (cola) return amt * (aPV(r, E - R) - aPV(r, st - 1 - R));
+  const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
+  const pvD = (amt, st, stop, cola) => {
+    if (st > stop) return 0;
+    if (cola) return amt * (aPV(r, stop - R) - aPV(r, st - 1 - R));
     const q = (1 + r) * (1 + infl) - 1;
     return amt * Math.pow(1 + infl, -(R - state.startAge)) *
-           (aPV(q, E - R) - aPV(q, st - 1 - R));
+           (aPV(q, stop - R) - aPV(q, st - 1 - R));
   };
-  const pvInc = pvD(state.penAmt, penStart, state.penCola)
-              + pvD(state.ssAmt, ssStart, true)
-              + pvD(state.pen2Amt, pen2Start, state.pen2Cola)
-              + pvD(state.ss2Amt, ss2Start, true);
+  const pvInc = pvD(state.penAmt, penStart, stopOf(state.penStop), state.penCola)
+              + pvD(state.ssAmt, ssStart, stopOf(state.ssStop), true)
+              + pvD(state.pen2Amt, pen2Start, stopOf(state.pen2Stop), state.pen2Cola)
+              + pvD(state.ss2Amt, ss2Start, stopOf(state.ss2Stop), true);
   const BR = state.startBal * Math.pow(1 + r, nW) + state.salary * s * fvFactor(r, nW);
   const C = (BR + pvInc - state.legacy * Math.pow(1 + r, -nR)) * annuityFactor(r, nR);
   return C - state.salary * (1 - s);
 }
 
-/* Latest retirement age at which retirement consumption does not exceed
-   working consumption (the floor of the exact level point). Errs toward a
+/* Latest retirement age at which retirement spending does not exceed
+   working spending (the floor of the exact level point). Errs toward a
    small step DOWN at retirement rather than up, matching the usual direction
    of retirement spending. Clamped at the current age. */
 function solveRStar() {
@@ -394,7 +416,9 @@ function clampVal(key, v) {
   if (key === "retAge")
     return Math.min(Math.max(Math.round(v), state.startAge), state.endAge - 1);
   if (key === "endAge")  return Math.max(Math.round(v), state.startAge + 1);
-  if (key === "penAge" || key === "ssAge") return Math.max(Math.round(v), 0);
+  if (["penAge","ssAge","pen2Age","ss2Age",
+       "penStop","ssStop","pen2Stop","ss2Stop"].includes(key))
+    return Math.max(Math.round(v), 0);
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
   return Math.max(v, 0);
 }
@@ -421,15 +445,15 @@ function pctField(key, label, step) {
     '<div class="pct"><input type="number" class="numbox" id="v-' + key +
     '" step="' + step + '"><span class="unit">%</span></div></div>';
 }
-function numField(key, label, step) {
+function numField(key, label, step, ph) {
   return '<div class="field"><label class="lbl">' + label + '</label>' +
-    '<input type="number" class="numbox" id="v-' + key + '" step="' + step + '"></div>';
+    '<input type="number" class="numbox" id="v-' + key + '" step="' + step + '"' +
+    (ph ? ' placeholder="' + ph + '"' : '') + '></div>';
 }
 
 function buildInputs() {
   const host = document.getElementById("inputs");
   host.innerHTML =
-    '<div class="head">Situation</div>' +
     '<div class="grid2">' +
       moneyField("salary", "Salary", 1000) +
       moneyField("startBal", "Starting portfolio", 10000) +
@@ -439,22 +463,30 @@ function buildInputs() {
       numField("endAge", "End age", 1) +
       moneyField("legacy", "Legacy at end age", 5000) +
     '</div>' +
-    '<div class="grid2">' +
+    '<div class="grid-inc">' +
       moneyField("penAmt", "Pension ($/yr)", 500) +
       numField("penAge", "Start age", 1) +
+      numField("penStop", "Stop age", 1, "end") +
     '</div>' +
-    '<div class="grid2">' +
+    '<div class="grid-inc">' +
       moneyField("ssAmt", "Social Security ($/yr)", 500) +
       numField("ssAge", "Start age", 1) +
+      numField("ssStop", "Stop age", 1, "end") +
     '</div>' +
-    '<div class="grid2">' +
-      moneyField("pen2Amt", "Pension 2 ($/yr)", 500) +
-      numField("pen2Age", "Start age", 1) +
-    '</div>' +
-    '<div class="grid2">' +
-      moneyField("ss2Amt", "Social Security 2 ($/yr)", 500) +
-      numField("ss2Age", "Start age", 1) +
-    '</div>' +
+    '<details class="adv"' +
+      ((state.pen2Amt > 0 || state.ss2Amt > 0) ? " open" : "") + '>' +
+      '<summary>Spouse</summary>' +
+      '<div class="grid-inc">' +
+        moneyField("pen2Amt", "Pension 2 ($/yr)", 500) +
+        numField("pen2Age", "Start age", 1) +
+        numField("pen2Stop", "Stop age", 1, "end") +
+      '</div>' +
+      '<div class="grid-inc">' +
+        moneyField("ss2Amt", "Social Security 2 ($/yr)", 500) +
+        numField("ss2Age", "Start age", 1) +
+        numField("ss2Stop", "Stop age", 1, "end") +
+      '</div>' +
+    '</details>' +
     '<details class="adv" id="advBox"' +
       ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
       '<summary>Advanced</summary>' +
@@ -472,24 +504,29 @@ function buildInputs() {
         'onward. Social Security is always inflation adjusted.</div>' +
     '</details>' +
 
-    '<div class="head">Assumption</div>' +
-    '<div class="grid2">' +
-      pctField("ratePct", "Real growth rate", 0.1) +
-      '<div></div>' +
+    '<label class="lbl rate-sep" for="v-ratePct">Portfolio growth rate (after inflation)</label>' +
+    '<div class="rate-row">' +
+      '<div class="pct"><input type="number" class="numbox" id="v-ratePct" ' +
+        'step="0.1" aria-label="Portfolio growth rate after inflation">' +
+        '<span class="unit">%</span></div>' +
+      '<div class="slider-wrap">' +
+        '<input type="range" id="v-ratePct-slider" min="0" max="8" step="0.1" ' +
+          'aria-label="Real growth rate slider">' +
+        '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
+      '</div>' +
     '</div>' +
-    '<input type="range" id="v-ratePct-slider" min="0" max="8" step="0.1" ' +
-      'aria-label="Real growth rate slider">' +
-    '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
 
     '<div class="head">Decision variables</div>' +
     '<div class="dv-row">' +
       numField("retAge", "Retirement age", 1) +
-      '<button class="solve solve-ret" id="setRStar">solve' +
+      '<button class="solve solve-ret" id="setRStar" ' +
+        'title="Click to set the retirement age to the solved value">solve' +
         '<span class="solve-val" id="rStar"></span></button>' +
     '</div>' +
     '<div class="dv-row">' +
       pctField("savePct", "Savings rate", 0.5) +
-      '<button class="solve solve-save" id="setSStar">solve' +
+      '<button class="solve solve-save" id="setSStar" ' +
+        'title="Click to set the savings rate to the solved value">solve' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
     '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
@@ -498,8 +535,9 @@ function buildInputs() {
       'decision variable\u2019s current value.</div>';
 
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
-                "penAmt","penAge","ssAmt","ssAge",
-                "pen2Amt","pen2Age","ss2Amt","ss2Age","legacy","inflPct"];
+                "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
+                "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop",
+                "legacy","inflPct"];
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
   for (const k of ["penCola", "pen2Cola"]) {
@@ -554,6 +592,14 @@ function refreshInputs(m) {
   syncBox("v-penAge", state.penAge);
   syncBox("v-ssAmt", state.ssAmt);
   syncBox("v-ssAge", state.ssAge);
+  const syncStop = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = val > 0 ? val : "";
+  };
+  syncStop("v-penStop", state.penStop);
+  syncStop("v-ssStop", state.ssStop);
+  syncStop("v-pen2Stop", state.pen2Stop);
+  syncStop("v-ss2Stop", state.ss2Stop);
   syncBox("v-pen2Amt", state.pen2Amt);
   syncBox("v-pen2Age", state.pen2Age);
   syncBox("v-ss2Amt", state.ss2Amt);
@@ -598,10 +644,10 @@ function renderStats(m) {
              fmt$(saveYr / 12) + "/mo")) +
     stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--accum)", "") +
     (m.nWork === 0
-      ? stat("Working consumption", "—", "var(--ink-soft)", "no working years")
-      : stat("Working consumption", fmt$(m.workSpend), "var(--ink)",
+      ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
+      : stat("Working spending", fmt$(m.workSpend), "var(--ink)",
              "salary − savings")) +
-    stat("Retirement consumption", fmt$(m.S), "var(--decum)", "");
+    stat("Retirement spending", fmt$(m.S), "var(--decum)", "");
   function stat(l, v, c, sub) {
     return '<div class="stat"><span class="lbl">' + l + '</span>' +
       '<div class="num" style="color:' + c + '">' + v + '</div>' +
@@ -676,7 +722,7 @@ function renderChart(m) {
     stroke:"#8A5A2E", "stroke-width":1 }));
 
   /* stacked funding bands (retirement): pension on the bottom, Social Security
-     above it, portfolio withdrawal on top; the stack sums to consumption. */
+     above it, portfolio withdrawal on top; the stack sums to spending. */
   const retRows = rows.filter(d => d.phase === "retired");
   if (retRows.length > 1) {
     const stepPts = f => {
@@ -834,7 +880,7 @@ function attachTooltip() {
             ? row("Social Security 2", '<span style="color:#3D6B9E">' + fmt$(d.s2) + "</span>")
             : "")
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
-      row("Consumption", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
+      row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
     tip.style.display = "block";
     const bw = box.clientWidth, tw = tip.offsetWidth;
     let left = px + 14;
