@@ -62,6 +62,7 @@
   .rate-row .numbox { font-size:12px; padding:4px 6px; }
   .slider-wrap { padding-bottom:2px; }
   #v-ratePct-slider { width:100%; margin:0; accent-color:var(--accum); }
+  #v-tiltPct-slider { width:100%; margin:0; accent-color:#8A5A2E; }
   .slider-ends { display:flex; justify-content:space-between; font-size:10px;
                  color:var(--ink-soft); margin:1px 2px 0; }
   .adv { margin:2px 0 8px; }
@@ -117,6 +118,11 @@
   svg text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
   .axis-label { font-family:Charter,Georgia,serif !important; font-style:italic; }
   .masthead { display:flex; align-items:baseline; gap:12px; margin:2px 2px 12px; }
+  .mast-actions { margin-left:auto; display:flex; gap:8px; }
+  .mast-btn { font-size:11px; padding:3px 9px; border:1px solid var(--rule);
+              background:none; border-radius:4px; cursor:pointer;
+              color:var(--ink-soft); font-family:inherit; }
+  .mast-btn:hover { color:var(--ink); border-color:var(--ink-soft); }
   .site-name { font-family:Charter,Georgia,serif; font-size:21px; font-weight:600;
                letter-spacing:0.2px; color:var(--ink); }
   .site-tag { font-family:Charter,Georgia,serif; font-style:italic; font-size:13px;
@@ -133,6 +139,12 @@
 <div class="masthead">
   <span class="site-name">LevelSpend</span>
   <span class="site-tag">a level-spending retirement solver</span>
+  <span class="mast-actions">
+    <button class="mast-btn" id="shareBtn"
+      title="Copy a link that reopens the tool with your current inputs">copy scenario link</button>
+    <button class="mast-btn" id="resetBtn"
+      title="Restore all inputs to their defaults">reset</button>
+  </span>
 </div>
 <div class="cols">
 
@@ -202,7 +214,10 @@
           <li>Revisit once a year, or after any major change in your finances:
               update your age, portfolio value, and any other inputs that have
               changed (salary, Social Security estimate, pension), and re-check.
-              The plan is meant to be recalculated, not set once.</li>
+              The plan is meant to be recalculated, not set once. To avoid
+              re-typing, <b>copy scenario link</b> (top right) makes a
+              bookmarkable link containing your inputs; nothing is stored
+              otherwise.</li>
         </ol>
       </div>
       <div>
@@ -247,7 +262,7 @@ const state = {
   penAmt: 12000, penAge: 60, penStop: 0, ssAmt: 21000, ssAge: 67, ssStop: 0,
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   legacy: 0,
-  inflPct: 3, penCola: true, pen2Cola: true,
+  inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -301,7 +316,13 @@ function simulate() {
   }
   const atRet = bal;
 
-  const A_ = annuityFactor(r, nRet);
+  /* Spending tilt g: retirement spending grows at g per year (negative g
+     spends more early). PV of the tilted path is a growing annuity, i.e. the
+     level formula at the adjusted rate r* = (r-g)/(1+g); the amortized C is
+     then the FIRST-year amount. g = 0 reduces to the level case exactly. */
+  const g = state.tiltPct / 100;
+  const rStar = (r - g) / (1 + g);
+  const A_ = (1 + g) * annuityFactor(rStar, nRet);
   const vL = Math.pow(1 + r, -nRet);           // PV factor for the legacy
   const C = (atRet + pvInc - state.legacy * vL) * A_;
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
@@ -316,12 +337,13 @@ function simulate() {
     const s2 = (age >= ss2Start && age <= ss2Stop) ? state.ss2Amt : 0;
     const pen = p1 + p2, ss = s1 + s2;
     const inc = pen + ss;
-    const wd = C - inc;
+    const spendYr = C * Math.pow(1 + g, age - R - 1);
+    const wd = spendYr - inc;
     bal = bal * (1 + r) - wd;
     if (bal < minBal) { minBal = bal; minAge = age; }
     if (bal < -1e-6) { if (negFrom === null) negFrom = age; negTo = age; }
     rows.push({ age, balance: Math.max(bal, 0), phase: "retired",
-                wd, inc, pen, ss, p1, p2, s1, s2, spend: C });
+                wd, inc, pen, ss, p1, p2, s1, s2, spend: spendYr });
   }
   const feasible = minBal >= -1e-6;
 
@@ -364,7 +386,10 @@ function levelGapAt(R) {
               + pvD(state.pen2Amt, pen2Start, stopOf(state.pen2Stop), state.pen2Cola)
               + pvD(state.ss2Amt, ss2Start, stopOf(state.ss2Stop), true);
   const BR = state.startBal * Math.pow(1 + r, nW) + state.salary * s * fvFactor(r, nW);
-  const C = (BR + pvInc - state.legacy * Math.pow(1 + r, -nR)) * annuityFactor(r, nR);
+  const g = state.tiltPct / 100;
+  const rSt = (r - g) / (1 + g);
+  const C = (BR + pvInc - state.legacy * Math.pow(1 + r, -nR)) *
+            (1 + g) * annuityFactor(rSt, nR);
   return C - state.salary * (1 - s);
 }
 
@@ -420,6 +445,7 @@ function clampVal(key, v) {
        "penStop","ssStop","pen2Stop","ss2Stop"].includes(key))
     return Math.max(Math.round(v), 0);
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
+  if (key === "tiltPct") return Math.min(Math.max(v, -10), 10);
   return Math.max(v, 0);
 }
 
@@ -488,7 +514,7 @@ function buildInputs() {
       '</div>' +
     '</details>' +
     '<details class="adv" id="advBox"' +
-      ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
+      ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0) ? " open" : "") + '>' +
       '<summary>Advanced</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-penCola"> ' +
         'Pension is inflation adjusted</label>' +
@@ -502,6 +528,21 @@ function buildInputs() {
         'Uncheck a box if that pension pays a fixed dollar amount with no cost of ' +
         'living adjustment; the tool then erodes its value by inflation from today ' +
         'onward. Social Security is always inflation adjusted.</div>' +
+      '<label class="lbl rate-sep" for="v-tiltPct">Spending tilt (%/yr)</label>' +
+      '<div class="rate-row">' +
+        '<div class="pct"><input type="number" class="numbox" id="v-tiltPct" ' +
+          'step="0.1" aria-label="Spending tilt percent per year">' +
+          '<span class="unit">%</span></div>' +
+        '<div class="slider-wrap">' +
+          '<input type="range" id="v-tiltPct-slider" min="-3" max="3" step="0.1" ' +
+            'aria-label="Spending tilt slider">' +
+          '<div class="slider-ends"><span>−3%</span><span>+3%</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Planned spending drifts instead of staying level: negative spends more in ' +
+        'early retirement, positive more later. Retirement spending in the stats ' +
+        'is then the first year’s amount.</div>' +
     '</details>' +
 
     '<label class="lbl rate-sep" for="v-ratePct">Portfolio growth rate (after inflation)</label>' +
@@ -537,7 +578,7 @@ function buildInputs() {
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop",
-                "legacy","inflPct"];
+                "legacy","inflPct","tiltPct"];
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
   for (const k of ["penCola", "pen2Cola"]) {
@@ -554,6 +595,13 @@ function buildInputs() {
     render();
   });
   rateSlider.addEventListener("change", () => pushHistory());
+
+  const tiltSlider = host.querySelector("#v-tiltPct-slider");
+  tiltSlider.addEventListener("input", e => {
+    state.tiltPct = Number(e.target.value);
+    render();
+  });
+  tiltSlider.addEventListener("change", () => pushHistory());
 
 
   host.querySelector("#setRStar").addEventListener("click", () => {
@@ -588,6 +636,8 @@ function refreshInputs(m) {
   syncBox("v-ratePct", state.ratePct);
   const rSl = document.getElementById("v-ratePct-slider");
   if (rSl && document.activeElement !== rSl) rSl.value = state.ratePct;
+  const tSl = document.getElementById("v-tiltPct-slider");
+  if (tSl && document.activeElement !== tSl) tSl.value = state.tiltPct;
   syncBox("v-penAmt", state.penAmt);
   syncBox("v-penAge", state.penAge);
   syncBox("v-ssAmt", state.ssAmt);
@@ -606,6 +656,7 @@ function refreshInputs(m) {
   syncBox("v-ss2Age", state.ss2Age);
   syncBox("v-legacy", state.legacy);
   syncBox("v-inflPct", state.inflPct);
+  syncBox("v-tiltPct", state.tiltPct);
   const cb1 = document.getElementById("v-penCola");
   if (cb1) cb1.checked = !!state.penCola;
   const cb2 = document.getElementById("v-pen2Cola");
@@ -647,7 +698,11 @@ function renderStats(m) {
       ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
       : stat("Working spending", fmt$(m.workSpend), "var(--ink)",
              "salary − savings")) +
-    stat("Retirement spending", fmt$(m.S), "var(--decum)", "");
+    stat("Retirement spending", fmt$(m.S), "var(--decum)",
+         state.tiltPct !== 0
+           ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
+             state.tiltPct + "%/yr after"
+           : "");
   function stat(l, v, c, sub) {
     return '<div class="stat"><span class="lbl">' + l + '</span>' +
       '<div class="num" style="color:' + c + '">' + v + '</div>' +
@@ -925,7 +980,12 @@ let lastSnap = null;
 function pushHistory() {
   const snap = JSON.stringify(state);
   if (snap === lastSnap) return;
-  try { history.pushState(JSON.parse(snap), ""); } catch (e) { /* file:// may block */ }
+  /* new entries use the bare URL: any edit clears a scenario hash from the
+     address bar, so a visible hash always means "this URL IS the current
+     inputs" and is safe to bookmark */
+  try {
+    history.pushState(JSON.parse(snap), "", location.pathname + location.search);
+  } catch (e) { /* file:// may block */ }
   lastSnap = snap;
 }
 window.addEventListener("popstate", e => {
@@ -935,9 +995,61 @@ window.addEventListener("popstate", e => {
   render();
 });
 
+/* Scenario links: all inputs, encoded in the URL hash. The fragment is never
+   sent to any server (fragments stay in the browser), so "nothing you type is
+   sent anywhere" remains true; a link only exists if the user copies it. */
+const DEFAULTS = JSON.parse(JSON.stringify(state));
+function applyHash() {
+  if (!location.hash || location.hash.length < 2) return;
+  const pairs = location.hash.slice(1).split("&");
+  for (let pass = 0; pass < 2; pass++) {      // 2 passes: age clamps depend on each other
+    for (const pair of pairs) {
+      const eq = pair.indexOf("=");
+      if (eq < 1) continue;
+      const k = pair.slice(0, eq), v = pair.slice(eq + 1);
+      if (!(k in state)) continue;
+      if (typeof DEFAULTS[k] === "boolean") { state[k] = v === "1"; continue; }
+      const n = Number(v);
+      if (!Number.isFinite(n)) continue;
+      const c = clampVal(k, n);
+      if (c !== null) state[k] = c;
+    }
+  }
+}
+function scenarioLink() {
+  const parts = Object.keys(state).map(k => {
+    const v = state[k];
+    return k + "=" + (typeof v === "boolean" ? (v ? 1 : 0) : v);
+  });
+  return location.href.split("#")[0] + "#" + parts.join("&");
+}
+applyHash();
 buildInputs();
 attachTooltip();
 render();
+document.getElementById("resetBtn").addEventListener("click", () => {
+  Object.assign(state, JSON.parse(JSON.stringify(DEFAULTS)));
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+  buildInputs();          // rebuild so drawers re-collapse per defaults
+  render();
+  pushHistory();
+});
+document.getElementById("shareBtn").addEventListener("click", async () => {
+  const link = scenarioLink();
+  const btn = document.getElementById("shareBtn");
+  /* surface the link in the address bar too, so the browser's own bookmark
+     button and a page reload both capture the scenario */
+  try { history.replaceState(history.state, "", "#" + link.split("#")[1]); }
+  catch (e) { /* file:// may block */ }
+  try {
+    await navigator.clipboard.writeText(link);
+    const t = btn.textContent;
+    btn.textContent = "copied!";
+    setTimeout(() => { btn.textContent = t; }, 1400);
+  } catch (e) {
+    window.prompt("Copy this link:", link);
+  }
+});
 lastSnap = JSON.stringify(state);
 try { history.replaceState(JSON.parse(lastSnap), ""); } catch (e) { /* file:// may block */ }
 let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(render, 120); });
