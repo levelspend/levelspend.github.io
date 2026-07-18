@@ -76,6 +76,9 @@
   .dv-row { display:grid; grid-template-columns:1fr 1.35fr; gap:9px 12px;
             align-items:stretch; margin-bottom:6px; }
   .dv-row .solve { align-self:end; }
+  .dv-slider { width:100%; margin:0 0 8px; }
+  .dv-slider.ret  { accent-color:var(--decum); }
+  .dv-slider.save { accent-color:var(--accum); }
   .solve {
     padding:6px 10px; border-radius:4px; cursor:pointer; color:#fff;
     font-family:inherit; font-size:12px; font-weight:600; line-height:1.2;
@@ -567,12 +570,16 @@ function buildInputs() {
         'title="Click to set the retirement age to the solved value">solve' +
         '<span class="solve-val" id="rStar"></span></button>' +
     '</div>' +
+    '<input type="range" id="v-retAge-slider" class="dv-slider ret" step="1" ' +
+      'aria-label="Retirement age slider">' +
     '<div class="dv-row">' +
       pctField("savePct", "Savings rate", 0.5) +
       '<button class="solve solve-save" id="setSStar" ' +
         'title="Click to set the savings rate to the solved value">solve' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
+    '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
+      'max="60" step="0.5" aria-label="Savings rate slider">' +
     '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
       'solve finds the value that makes spending level through the end age, ' +
       'holding everything else fixed. Each solve is conditional on the other ' +
@@ -605,6 +612,20 @@ function buildInputs() {
     render();
   });
   tiltSlider.addEventListener("change", () => pushHistory());
+
+  const retSlider = host.querySelector("#v-retAge-slider");
+  retSlider.addEventListener("input", e => {
+    const v = clampVal("retAge", Number(e.target.value));
+    if (v !== null) { state.retAge = v; render(); }
+  });
+  retSlider.addEventListener("change", () => pushHistory());
+
+  const saveSlider = host.querySelector("#v-savePct-slider");
+  saveSlider.addEventListener("input", e => {
+    state.savePct = Number(e.target.value);
+    render();
+  });
+  saveSlider.addEventListener("change", () => pushHistory());
 
 
   host.querySelector("#setRStar").addEventListener("click", () => {
@@ -641,6 +662,14 @@ function refreshInputs(m) {
   if (rSl && document.activeElement !== rSl) rSl.value = state.ratePct;
   const tSl = document.getElementById("v-tiltPct-slider");
   if (tSl && document.activeElement !== tSl) tSl.value = state.tiltPct;
+  const raSl = document.getElementById("v-retAge-slider");
+  if (raSl) {
+    raSl.min = state.startAge;
+    raSl.max = state.endAge - 1;
+    if (document.activeElement !== raSl) raSl.value = state.retAge;
+  }
+  const spSl = document.getElementById("v-savePct-slider");
+  if (spSl && document.activeElement !== spSl) spSl.value = state.savePct;
   syncBox("v-penAmt", state.penAmt);
   syncBox("v-penAge", state.penAge);
   syncBox("v-ssAmt", state.ssAmt);
