@@ -281,14 +281,15 @@
 "use strict";
 
 const state = {
-  startBal: 20000, salary: 46000, savePct: 8, ratePct: 4,
-  startAge: 30, retAge: 62, endAge: 95,
-  penAmt: 12000, penAge: 60, penStop: 0, ssAmt: 21000, ssAge: 67, ssStop: 0,
+  startBal: 150000, salary: 80000, savePct: 15, ratePct: 4,
+  startAge: 55, retAge: 65, endAge: 95,
+  penAmt: 15000, penAge: 67, penStop: 0, ssAmt: 30000, ssAge: 70, ssStop: 0,
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   spouseAge: 0,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
-  glide: false, rateEnd: 4, glideKink: false, rateMid: 4, rateMid2: -1,
+  glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
+  glideJump: false, rateMid2: -1,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -717,6 +718,8 @@ function buildInputs() {
           '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
         '</div>' +
       '</div>' +
+      '<label class="adv-check" id="jumpCheckRow"><input type="checkbox" id="v-glideJump"> ' +
+        'Jump to a different rate after retirement</label>' +
       '<div class="grid2" id="kinkRow2">' +
         '<div class="field"><label class="lbl" for="v-rateMid2">Rate after ' +
           'retirement</label>' +
@@ -775,6 +778,7 @@ function buildInputs() {
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop","spouseAge",
                 "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2"];
+  // glideJump is a boolean gate, handled in sync below
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
   const glideBox = host.querySelector("#v-glide");
@@ -790,7 +794,27 @@ function buildInputs() {
   saveSlider.addEventListener("change", () => pushHistory());
 
   const kinkBox = host.querySelector("#v-glideKink");
-  kinkBox.addEventListener("change", e => { state.glideKink = e.target.checked; render(); pushHistory(); });
+  kinkBox.addEventListener("change", e => {
+    state.glideKink = e.target.checked;
+    /* turning off the kink also cancels a jump (a jump lives at the kink) */
+    if (!state.glideKink) { state.glideJump = false; state.rateMid2 = -1; }
+    render(); pushHistory();
+  });
+  const jumpBox = host.querySelector("#v-glideJump");
+  jumpBox.addEventListener("change", e => {
+    state.glideJump = e.target.checked;
+    /* checking splits the rate immediately: seed a visibly different
+       post-retirement rate (1 point below the retirement rate, floored at 0)
+       so the line jumps the moment the box is checked. Unchecking restores the
+       coupled sentinel. Only seed when currently coupled, so a returning
+       user's chosen value isn't clobbered. */
+    if (state.glideJump) {
+      if (state.rateMid2 < 0) state.rateMid2 = Math.max(0, Math.round((state.rateMid - 1) * 10) / 10);
+    } else {
+      state.rateMid2 = -1;
+    }
+    render(); pushHistory();
+  });
   const midSlider = host.querySelector("#v-rateMid-slider");
   midSlider.addEventListener("input", e => { state.rateMid = Number(e.target.value); render(); });
   midSlider.addEventListener("change", () => pushHistory());
@@ -870,8 +894,14 @@ function refreshInputs(m) {
   if (kCheck) kCheck.style.display = state.glide ? "" : "none";
   const kRow = document.getElementById("kinkRow");
   if (kRow) kRow.style.display = (state.glide && state.glideKink) ? "" : "none";
+  const jChk = document.getElementById("jumpCheckRow");
+  if (jChk) jChk.style.display = (state.glide && state.glideKink) ? "" : "none";
+  const jB = document.getElementById("v-glideJump");
+  if (jB) jB.checked = !!state.glideJump;
   const kRow2 = document.getElementById("kinkRow2");
-  if (kRow2) kRow2.style.display = (state.glide && state.glideKink) ? "" : "none";
+  if (kRow2) kRow2.style.display = (state.glide && state.glideKink && state.glideJump) ? "" : "none";
+  // a scenario link may set rateMid2 without glideJump; reconcile
+  if (state.rateMid2 >= 0) state.glideJump = true;
   const m2 = document.getElementById("v-rateMid2");
   if (m2 && document.activeElement !== m2)
     m2.value = state.rateMid2 >= 0 ? state.rateMid2 : "";
