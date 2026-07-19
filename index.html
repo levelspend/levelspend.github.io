@@ -61,8 +61,11 @@
               align-items:center; margin-bottom:6px; }
   .rate-row .numbox { font-size:12px; padding:4px 6px; }
   .slider-wrap { padding-bottom:2px; }
-  #v-ratePct-slider { width:100%; margin:0; accent-color:var(--accum); }
+  #v-ratePct-slider { width:100%; margin:0; accent-color:#6B7280; }
+  #v-rateEnd-slider, #v-rateMid-slider { accent-color:#6B7280; }
   #v-tiltPct-slider { width:100%; margin:0; accent-color:#8A5A2E; }
+  .dv-slider { width:100%; margin:0 0 8px; }
+  .dv-slider.save { accent-color:var(--accum); }
   .slider-ends { display:flex; justify-content:space-between; font-size:10px;
                  color:var(--ink-soft); margin:1px 2px 0; }
   .adv { margin:2px 0 8px; }
@@ -742,6 +745,8 @@ function buildInputs() {
         'title="Click to set the savings rate to the solved value">solve' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
+    '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
+      'max="60" step="0.5" aria-label="Savings rate slider">' +
     '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
       'solve finds the value that makes spending level through the end age, ' +
       'holding everything else fixed. Each solve is conditional on the other ' +
@@ -758,6 +763,13 @@ function buildInputs() {
   const endSlider = host.querySelector("#v-rateEnd-slider");
   endSlider.addEventListener("input", e => { state.rateEnd = Number(e.target.value); render(); });
   endSlider.addEventListener("change", () => pushHistory());
+  const saveSlider = host.querySelector("#v-savePct-slider");
+  saveSlider.addEventListener("input", e => {
+    state.savePct = Number(e.target.value);
+    render();
+  });
+  saveSlider.addEventListener("change", () => pushHistory());
+
   const kinkBox = host.querySelector("#v-glideKink");
   kinkBox.addEventListener("change", e => { state.glideKink = e.target.checked; render(); pushHistory(); });
   const midSlider = host.querySelector("#v-rateMid-slider");
@@ -821,6 +833,8 @@ function refreshInputs(m) {
   if (rSl && document.activeElement !== rSl) rSl.value = state.ratePct;
   const tSl = document.getElementById("v-tiltPct-slider");
   if (tSl && document.activeElement !== tSl) tSl.value = state.tiltPct;
+  const spSl = document.getElementById("v-savePct-slider");
+  if (spSl && document.activeElement !== spSl) spSl.value = state.savePct;
   syncBox("v-rateEnd", state.rateEnd);
   const eSl = document.getElementById("v-rateEnd-slider");
   if (eSl && document.activeElement !== eSl) eSl.value = state.rateEnd;
