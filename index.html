@@ -124,7 +124,7 @@
   .axis-label { font-family:Charter,Georgia,serif !important; font-style:italic; }
   .rate-handle { cursor:ns-resize; touch-action:none; }
   .rate-handle:hover { stroke-width:3; }
-  .rate-handle[data-key="rateMid"] { cursor:move; }
+  .rate-handle[data-key="rateMid"], .rate-handle[data-key="rateMid2"] { cursor:move; }
   circle.ret-handle { cursor:ew-resize; touch-action:none; }
   circle.ret-handle:hover { stroke-width:3; }
   line.ret-handle { cursor:ew-resize; touch-action:none; }
@@ -286,7 +286,7 @@ const state = {
   spouseAge: 0,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
-  glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
+  glide: false, rateEnd: 4, glideKink: false, rateMid: 4, rateMid2: -1,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -313,9 +313,12 @@ function buildSchedule(A0, E, Rkink) {
        r0 (current age) -> rMid (retirement) -> r1 (end age) */
     if (state.glideKink && Rkink !== undefined && Rkink > A0 && Rkink < E) {
       const rM = state.rateMid / 100;
+      /* rateMid2 >= 0 decouples the post-retirement segment: the rate JUMPS at
+         retirement (a one-time reallocation). -1 = coupled = continuous kink. */
+      const rP = state.rateMid2 >= 0 ? state.rateMid2 / 100 : rM;
       return aMid <= Rkink
         ? r0 + (rM - r0) * (aMid - A0) / (Rkink - A0)
-        : rM + (r1 - rM) * (aMid - Rkink) / (E - Rkink);
+        : rP + (r1 - rP) * (aMid - Rkink) / (E - Rkink);
     }
     return r0 + (r1 - r0) * (aMid - A0) / n;
   };
@@ -563,6 +566,7 @@ function clampVal(key, v) {
     return Math.max(Math.round(v), 0);
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
   if (key === "tiltPct") return Math.min(Math.max(v, -10), 10);
+  if (key === "rateMid2") return v < 0 ? -1 : Math.max(v, 0);
   return Math.max(v, 0);
 }
 
@@ -571,7 +575,8 @@ function wireBox(key, box) {
   box.addEventListener("focus", e => { const t = e.target; setTimeout(() => t.select(), 0); });
   box.addEventListener("change", e => {
     const raw = String(e.target.value).replace(/[,\s$]/g, "");
-    const v = clampVal(key, raw === "" ? 0 : Number(raw));
+    const blank = key === "rateMid2" ? -1 : 0;   // blank rateMid2 = coupled
+    const v = clampVal(key, raw === "" ? blank : Number(raw));
     if (v === null) {
       e.target.value = isMoney ? fmtMoney(state[key]) : state[key];
       return;
@@ -710,13 +715,25 @@ function buildInputs() {
           '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
         '</div>' +
       '</div>' +
+      '<div class="grid2" id="kinkRow2">' +
+        '<div class="field"><label class="lbl" for="v-rateMid2">Rate after ' +
+          'retirement</label>' +
+        '<div class="pct"><input type="number" class="numbox" id="v-rateMid2" ' +
+          'step="0.1" placeholder="same" ' +
+          'aria-label="Growth rate just after retirement"><span class="unit">%</span>' +
+        '</div></div>' +
+        '<div></div>' +
+      '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'When on, the growth rate changes linearly from the portfolio growth ' +
         'rate below (at your current age) to this ending rate (at the end age). ' +
         'The rate is drawn as a dashed line on its own scale at the far right of ' +
         'the chart; drag the round handles on it to set the rates directly. ' +
         'Optionally, anchor a third rate at the retirement age for a two-segment ' +
-        'path.</div>' +
+        'path. Filling in a rate after retirement makes the rate jump there, a ' +
+        'one-time reallocation; leave it blank for a continuous path. Two flat ' +
+        'rates: enter the same rate at the start and retirement anchors, and the ' +
+        'same lower rate after retirement and at the end.</div>' +
       '</details>' +
     '</details>' +
 
@@ -755,7 +772,7 @@ function buildInputs() {
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop","spouseAge",
-                "legacy","inflPct","tiltPct","rateEnd","rateMid"];
+                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2"];
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
   const glideBox = host.querySelector("#v-glide");
@@ -851,6 +868,11 @@ function refreshInputs(m) {
   if (kCheck) kCheck.style.display = state.glide ? "" : "none";
   const kRow = document.getElementById("kinkRow");
   if (kRow) kRow.style.display = (state.glide && state.glideKink) ? "" : "none";
+  const kRow2 = document.getElementById("kinkRow2");
+  if (kRow2) kRow2.style.display = (state.glide && state.glideKink) ? "" : "none";
+  const m2 = document.getElementById("v-rateMid2");
+  if (m2 && document.activeElement !== m2)
+    m2.value = state.rateMid2 >= 0 ? state.rateMid2 : "";
   syncBox("v-penAmt", state.penAmt);
   syncBox("v-penAge", state.penAge);
   syncBox("v-ssAmt", state.ssAmt);
@@ -1127,7 +1149,13 @@ function renderChart(m) {
   if (state.glide && Y3) {
     const hasKink = state.glideKink && m.R > m.A0 && m.R < m.E;
     const anchors = [{ key:"ratePct", age:x0, v:state.ratePct }];
-    if (hasKink) anchors.push({ key:"rateMid", age:m.R, v:state.rateMid });
+    if (hasKink) {
+      anchors.push({ key:"rateMid", age:m.R, v:state.rateMid });
+      /* decoupled post-retirement rate: a second anchor at the same age makes
+         the polyline jump vertically at retirement, with its own handle */
+      if (state.rateMid2 >= 0)
+        anchors.push({ key:"rateMid2", age:m.R, v:state.rateMid2 });
+    }
     anchors.push({ key:"rateEnd", age:x1, v:state.rateEnd });
 
     const rp = anchors.map((a, i) =>
@@ -1292,7 +1320,7 @@ function attachRateDrag() {
          both axes: vertical sets the rate, horizontal moves retirement.
          Clamped to keep retirement strictly inside (current age, end age)
          so the kink stays defined mid-drag. */
-      if (dragKey === "rateMid") {
+      if (dragKey === "rateMid" || dragKey === "rateMid2") {
         let a = clampVal("retAge", ageAtX(e, rect));
         if (a !== null) {
           a = Math.min(Math.max(a, state.startAge + 1), state.endAge - 1);
