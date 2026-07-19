@@ -61,7 +61,7 @@
               align-items:center; margin-bottom:6px; }
   .rate-row .numbox { font-size:12px; padding:4px 6px; }
   .slider-wrap { padding-bottom:2px; }
-  #v-ratePct-slider { width:100%; margin:0; accent-color:#6B7280; }
+  #v-ratePct-slider { width:100%; margin:0; accent-color:var(--accum); }
   #v-tiltPct-slider { width:100%; margin:0; accent-color:#8A5A2E; }
   .slider-ends { display:flex; justify-content:space-between; font-size:10px;
                  color:var(--ink-soft); margin:1px 2px 0; }
@@ -72,13 +72,12 @@
   .adv-check { display:flex; align-items:center; gap:7px; font-size:12px;
                color:var(--ink); margin:0 0 6px; cursor:pointer; }
   .adv .lbl { white-space:nowrap; }
+  .adv .adv.sub { margin:2px 0 6px 12px; }
+  .adv .adv.sub summary { font-weight:500; font-size:11.5px; }
   /* solve buttons */
   .dv-row { display:grid; grid-template-columns:1fr 1.35fr; gap:9px 12px;
             align-items:stretch; margin-bottom:6px; }
   .dv-row .solve { align-self:end; }
-  .dv-slider { width:100%; margin:0 0 8px; }
-  .dv-slider.ret  { accent-color:var(--decum); }
-  .dv-slider.save { accent-color:var(--accum); }
   .solve {
     padding:6px 10px; border-radius:4px; cursor:pointer; color:#fff;
     font-family:inherit; font-size:12px; font-weight:600; line-height:1.2;
@@ -120,6 +119,17 @@
   #tip .row { display:flex; justify-content:space-between; gap:18px; }
   svg text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
   .axis-label { font-family:Charter,Georgia,serif !important; font-style:italic; }
+  .rate-handle { cursor:ns-resize; touch-action:none; }
+  .rate-handle:hover { stroke-width:3; }
+  .rate-handle[data-key="rateMid"] { cursor:move; }
+  circle.ret-handle { cursor:ew-resize; touch-action:none; }
+  circle.ret-handle:hover { stroke-width:3; }
+  line.ret-handle { cursor:ew-resize; touch-action:none; }
+  .band-h { cursor:ns-resize; touch-action:none; }
+  .band-v { cursor:ew-resize; touch-action:none; }
+  .legacy-handle { cursor:ns-resize; touch-action:none; }
+  .legacy-handle:hover { stroke-width:3; }
+  #chart text { pointer-events:none; }   /* no text is interactive; never block a drag */
   .masthead { display:flex; align-items:baseline; gap:12px; margin:2px 2px 12px;
               flex-wrap:wrap; row-gap:6px; }
   .mast-actions { margin-left:auto; display:flex; gap:8px; }
@@ -269,39 +279,80 @@ const state = {
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
+  glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
 const annuityFactor = (r, n) => r === 0 ? 1 / n : r / (1 - Math.pow(1 + r, -n));
 const aPV = (r, k) => k <= 0 ? 0 : (r === 0 ? k : (1 - Math.pow(1 + r, -k)) / r);
 
+/* ---- rate schedule ----
+   Constant rate (glide off) or linear from ratePct (at current age) to rateEnd
+   (at end age). rateAt(age) is the one-year real return earned over the year
+   ENDING at `age`. growth[k] is the cumulative product (1+r_1)...(1+r_k), i.e.
+   the future value at age A0+k of $1 today; disc[k] = 1/growth[k] is the
+   present value today of $1 at age A0+k. Every PV/FV in the model is expressed
+   through these, so a varying schedule stays exact with no solver: the geometric
+   shortcuts (annuityFactor, fvFactor) are just the special case of a flat
+   schedule. */
+function buildSchedule(A0, E, Rkink) {
+  const r0 = state.ratePct / 100;
+  const n = E - A0;
+  const rateForYearEnding = k => {   // k = 1..n, the year ending at age A0+k
+    if (!state.glide || n <= 0) return r0;
+    const r1 = state.rateEnd / 100;
+    const aMid = A0 + k - 0.5;       // rate evaluated at the midpoint of the year
+    /* optional third rate anchored at the retirement age: two linear segments
+       r0 (current age) -> rMid (retirement) -> r1 (end age) */
+    if (state.glideKink && Rkink !== undefined && Rkink > A0 && Rkink < E) {
+      const rM = state.rateMid / 100;
+      return aMid <= Rkink
+        ? r0 + (rM - r0) * (aMid - A0) / (Rkink - A0)
+        : rM + (r1 - rM) * (aMid - Rkink) / (E - Rkink);
+    }
+    return r0 + (r1 - r0) * (aMid - A0) / n;
+  };
+  const growth = [1];                // growth[0] = 1
+  for (let k = 1; k <= n; k++) growth[k] = growth[k - 1] * (1 + rateForYearEnding(k));
+  const disc = growth.map(g => 1 / g);
+  return { growth, disc, rateForYearEnding, n };
+}
+
 function simulate() {
-  const r = state.ratePct / 100, s = state.savePct / 100;
+  const s = state.savePct / 100;
   const A0 = state.startAge;
   const R = state.retAge;
   const E = state.endAge;
   const nWork = R - A0, nRet = E - R;
   const contribution = state.salary * s;
   const workSpend = state.salary * (1 - s);
+  const infl = state.inflPct / 100;
+  const g = state.tiltPct / 100;
+
+  /* Discount/growth tables indexed by whole years from the current age.
+     disc[k] = PV today of $1 at age A0+k;  growth[k] = FV at A0+k of $1 today. */
+  const { growth, disc } = buildSchedule(A0, E, R);
+  const idx = age => age - A0;                 // table index for an age
+  const discAt = age => disc[idx(age)];        // PV today of $1 at that age
 
   const penStart  = Math.max(state.penAge,  R) + 1;
   const ssStart   = Math.max(state.ssAge,   R) + 1;
   const pen2Start = Math.max(state.pen2Age, R) + 1;
   const ss2Start  = Math.max(state.ss2Age,  R) + 1;
-  const infl = state.inflPct / 100;
-  /* A COLA stream is constant in real dollars. A non-COLA (fixed nominal)
-     stream declines in real terms by (1+infl) per year from TODAY, so its PV
-     uses the combined rate q = (1+r)(1+infl)-1 and an erosion factor for the
-     years between now and retirement. */
-  /* stop = last paid age (funds the year ending on that birthday);
-     a raw stop of 0 means the stream runs to the end age. */
   const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
+
+  /* PV today of an income stream: sum of discounted year-end payments.
+     COLA streams are level in real terms; non-COLA erode by inflation from
+     today. Summing (rather than a closed annuity) is what lets the discount
+     schedule vary year to year. */
   const pvStream = (amt, start, stop, cola) => {
-    if (start > stop) return 0;
-    if (cola) return amt * (aPV(r, stop - R) - aPV(r, start - 1 - R));
-    const q = (1 + r) * (1 + infl) - 1;
-    return amt * Math.pow(1 + infl, -(R - A0)) *
-           (aPV(q, stop - R) - aPV(q, start - 1 - R));
+    if (amt === 0 || start > stop) return 0;
+    let pv = 0;
+    for (let age = start; age <= stop; age++) {
+      const real = cola ? amt : amt * Math.pow(1 + infl, -(age - A0));
+      pv += real * discAt(age);
+    }
+    return pv;
   };
   const penStop  = stopOf(state.penStop),  ssStop  = stopOf(state.ssStop);
   const pen2Stop = stopOf(state.pen2Stop), ss2Stop = stopOf(state.ss2Stop);
@@ -315,24 +366,29 @@ function simulate() {
                   p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend }];
   let bal = state.startBal;
   for (let age = A0 + 1; age <= R; age++) {
-    bal = bal * (1 + r) + contribution;
+    const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;   // this year's rate
+    bal = bal * (1 + rk) + contribution;
     rows.push({ age, balance: bal, phase: "work",
                 wd: -contribution, inc: 0, pen: 0, ss: 0,
                 p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend });
   }
   const atRet = bal;
 
-  /* Spending tilt g: retirement spending grows at g per year (negative g
-     spends more early). PV of the tilted path is a growing annuity, i.e. the
-     level formula at the adjusted rate r* = (r-g)/(1+g); the amortized C is
-     then the FIRST-year amount. g = 0 reduces to the level case exactly. */
-  const g = state.tiltPct / 100;
-  const rStar = (r - g) / (1 + g);
-  const A_ = (1 + g) * annuityFactor(rStar, nRet);
-  const vL = Math.pow(1 + r, -nRet);           // PV factor for the legacy
-  const C = (atRet + pvInc - state.legacy * vL) * A_;
+  /* Level (tilted) retirement spending, solved by PV balance:
+     C * PV(unit tilted spending stream) = atRet + pvInc - PV(legacy).
+     With a varying schedule the unit-stream PV is a sum, not a closed annuity;
+     C is still one linear division, so the solve stays exact. Spending in the
+     year ending at age R+1+j is C*(1+g)^j. */
+  const discR = discAt(R);                       // PV today of $1 at retirement
+  let unitPV = 0;                                // PV today of a unit tilted stream
+  for (let j = 0; j < nRet; j++)
+    unitPV += Math.pow(1 + g, j) * discAt(R + 1 + j);
+  const pvLegacy = state.legacy * discAt(E);
+  const C = unitPV > 0 ? (atRet * discR + pvInc - pvLegacy) / unitPV : 0;
+
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
   for (let age = R + 1; age <= E; age++) {
+    const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;
     const p1 = (age >= penStart && age <= penStop)
       ? (state.penCola  ? state.penAmt  : state.penAmt  * Math.pow(1 + infl, -(age - A0)))
       : 0;
@@ -345,7 +401,7 @@ function simulate() {
     const inc = pen + ss;
     const spendYr = C * Math.pow(1 + g, age - R - 1);
     const wd = spendYr - inc;
-    bal = bal * (1 + r) - wd;
+    bal = bal * (1 + rk) - wd;
     if (bal < minBal) { minBal = bal; minAge = age; }
     if (bal < -1e-6) { if (negFrom === null) negFrom = age; negTo = age; }
     rows.push({ age, balance: Math.max(bal, 0), phase: "retired",
@@ -353,10 +409,18 @@ function simulate() {
   }
   const feasible = minBal >= -1e-6;
 
-  const G = Math.pow(1 + r, nWork);
-  const sStar = (1 - (state.startBal * G + pvInc - state.legacy * vL) * A_
-                     / state.salary) /
-                (1 + fvFactor(r, nWork) * A_);
+  /* s* : the savings rate making working spending == first-year retirement
+     spending. Retirement spending is linear in s through atRet, so this
+     inverts in closed form. atRet = B0*growth[nWork] + salary*s*FV(contrib),
+     where FV(contrib) sums this schedule's growth of a unit yearly contribution. */
+  let fvContrib = 0;
+  for (let age = A0 + 1; age <= R; age++) fvContrib += growth[idx(R)] / growth[idx(age)];
+  const B0grow = state.startBal * growth[idx(R)];
+  // C(s) = ((B0grow + salary*s*fvContrib)*discR + pvInc - pvLegacy)/unitPV
+  // set C(s) = salary*(1-s):
+  const k1 = (B0grow * discR + pvInc - pvLegacy) / unitPV;   // C at s=0
+  const k2 = (state.salary * fvContrib * discR) / unitPV;    // dC/ds * ... per unit s
+  const sStar = (state.salary - k1) / (state.salary + k2);
 
   if (nWork === 0) {
     rows[0].phase = "retired";
@@ -370,33 +434,66 @@ function simulate() {
 }
 
 function levelGapAt(R) {
-  const r = state.ratePct / 100, s = state.savePct / 100;
+  const s = state.savePct / 100;
   const A0 = state.startAge;
   const E = state.endAge;
-  const nW = R - A0, nR = E - R;
+  const infl = state.inflPct / 100;
+  const g = state.tiltPct / 100;
+
+  /* R may be non-integer (R* bisection). Build the schedule to E; index by
+     years-from-A0, allowing fractional R for the retirement-phase sums. */
+  const { growth, disc } = buildSchedule(A0, E, R);
+  const idx = age => age - A0;
+  const discAt = age => {                      // PV today of $1 at (possibly fractional) age
+    const t = idx(age);
+    const lo = Math.floor(t), hi = Math.ceil(t);
+    if (lo === hi) return disc[lo];
+    return disc[lo] + (disc[hi] - disc[lo]) * (t - lo);   // linear interp between whole-year nodes
+  };
+
   const penStart  = Math.max(state.penAge,  R) + 1;
   const ssStart   = Math.max(state.ssAge,   R) + 1;
   const pen2Start = Math.max(state.pen2Age, R) + 1;
   const ss2Start  = Math.max(state.ss2Age,  R) + 1;
-  const infl = state.inflPct / 100;
   const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
-  const pvD = (amt, st, stop, cola) => {
-    if (st > stop) return 0;
-    if (cola) return amt * (aPV(r, stop - R) - aPV(r, st - 1 - R));
-    const q = (1 + r) * (1 + infl) - 1;
-    return amt * Math.pow(1 + infl, -(R - state.startAge)) *
-           (aPV(q, stop - R) - aPV(q, st - 1 - R));
+  const pvStream = (amt, start, stop, cola) => {
+    if (amt === 0 || start > stop) return 0;
+    let pv = 0;
+    for (let age = Math.ceil(start); age <= stop; age++) {
+      const real = cola ? amt : amt * Math.pow(1 + infl, -(age - A0));
+      pv += real * discAt(age);
+    }
+    return pv;
   };
-  const pvInc = pvD(state.penAmt, penStart, stopOf(state.penStop), state.penCola)
-              + pvD(state.ssAmt, ssStart, stopOf(state.ssStop), true)
-              + pvD(state.pen2Amt, pen2Start, stopOf(state.pen2Stop), state.pen2Cola)
-              + pvD(state.ss2Amt, ss2Start, stopOf(state.ss2Stop), true);
-  const BR = state.startBal * Math.pow(1 + r, nW) + state.salary * s * fvFactor(r, nW);
-  const g = state.tiltPct / 100;
-  const rSt = (r - g) / (1 + g);
-  const C = (BR + pvInc - state.legacy * Math.pow(1 + r, -nR)) *
-            (1 + g) * annuityFactor(rSt, nR);
+  const pvInc = pvStream(state.penAmt, penStart, stopOf(state.penStop), state.penCola)
+              + pvStream(state.ssAmt, ssStart, stopOf(state.ssStop), true)
+              + pvStream(state.pen2Amt, pen2Start, stopOf(state.pen2Stop), state.pen2Cola)
+              + pvStream(state.ss2Amt, ss2Start, stopOf(state.ss2Stop), true);
+
+  // FV of portfolio + contributions to R, via the schedule
+  const gR = growth[idx(Math.round(R))] !== undefined
+    ? growthAtFrac(growth, idx(R)) : growth[growth.length - 1];
+  const BR = state.startBal * gR + state.salary * s * fvContribTo(growth, idx, A0, R);
+
+  const nR = E - R;
+  const discR = discAt(R);
+  let unitPV = 0;
+  for (let j = 0; j < Math.round(nR); j++) unitPV += Math.pow(1 + g, j) * discAt(R + 1 + j);
+  const pvLegacy = state.legacy * discAt(E);
+  const C = unitPV > 0 ? (BR * discR + pvInc - pvLegacy) / unitPV : 0;
   return C - state.salary * (1 - s);
+}
+/* helpers for fractional R in levelGapAt */
+function growthAtFrac(growth, t) {
+  const lo = Math.floor(t), hi = Math.ceil(t);
+  if (lo === hi) return growth[lo];
+  return growth[lo] + (growth[hi] - growth[lo]) * (t - lo);
+}
+function fvContribTo(growth, idx, A0, R) {
+  let fv = 0;
+  const gR = growthAtFrac(growth, idx(R));
+  for (let age = A0 + 1; age <= Math.round(R); age++) fv += gR / growth[idx(age)];
+  return fv;
 }
 
 /* Latest retirement age at which retirement spending does not exceed
@@ -522,6 +619,8 @@ function buildInputs() {
     '<details class="adv" id="advBox"' +
       ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0) ? " open" : "") + '>' +
       '<summary>Advanced</summary>' +
+      '<details class="adv sub"' + ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
+      '<summary>Inflation (non-adjusted pensions)</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-penCola"> ' +
         'Pension is inflation adjusted</label>' +
       '<label class="adv-check"><input type="checkbox" id="v-pen2Cola"> ' +
@@ -534,7 +633,9 @@ function buildInputs() {
         'Uncheck a box if that pension pays a fixed dollar amount with no cost of ' +
         'living adjustment; the tool then erodes its value by inflation from today ' +
         'onward. Social Security is always inflation adjusted.</div>' +
-      '<label class="lbl rate-sep" for="v-tiltPct">Spending tilt (%/yr)</label>' +
+      '</details>' +
+      '<details class="adv sub"' + (state.tiltPct !== 0 ? " open" : "") + '>' +
+      '<summary>Spending tilt</summary>' +
       '<div class="rate-row">' +
         '<div class="pct"><input type="number" class="numbox" id="v-tiltPct" ' +
           'step="0.1" aria-label="Spending tilt percent per year">' +
@@ -549,6 +650,39 @@ function buildInputs() {
         'Planned spending drifts instead of staying level: negative spends more in ' +
         'early retirement, positive more later. Retirement spending in the stats ' +
         'is then the first year’s amount.</div>' +
+      '</details>' +
+      '<details class="adv sub"' + ((state.glide || state.glideKink) ? " open" : "") + '>' +
+      '<summary>Non-constant growth rate</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-glide"> ' +
+        'Glide the growth rate over time</label>' +
+      '<div class="rate-row" id="glideRow">' +
+        '<div class="pct"><input type="number" class="numbox" id="v-rateEnd" ' +
+          'step="0.1" aria-label="Ending growth rate"><span class="unit">%</span></div>' +
+        '<div class="slider-wrap">' +
+          '<input type="range" id="v-rateEnd-slider" min="0" max="8" step="0.1" ' +
+            'aria-label="Ending growth rate slider">' +
+          '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<label class="adv-check" id="kinkCheckRow"><input type="checkbox" id="v-glideKink"> ' +
+        'Anchor a rate at the retirement age</label>' +
+      '<div class="rate-row" id="kinkRow">' +
+        '<div class="pct"><input type="number" class="numbox" id="v-rateMid" ' +
+          'step="0.1" aria-label="Growth rate at retirement"><span class="unit">%</span></div>' +
+        '<div class="slider-wrap">' +
+          '<input type="range" id="v-rateMid-slider" min="0" max="8" step="0.1" ' +
+            'aria-label="Growth rate at retirement slider">' +
+          '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'When on, the growth rate changes linearly from the portfolio growth ' +
+        'rate below (at your current age) to this ending rate (at the end age). ' +
+        'The rate is drawn as a dashed line on its own scale at the far right of ' +
+        'the chart; drag the round handles on it to set the rates directly. ' +
+        'Optionally, anchor a third rate at the retirement age for a two-segment ' +
+        'path.</div>' +
+      '</details>' +
     '</details>' +
 
     '<label class="lbl rate-sep" for="v-ratePct">Portfolio growth rate (after inflation)</label>' +
@@ -570,16 +704,12 @@ function buildInputs() {
         'title="Click to set the retirement age to the solved value">solve' +
         '<span class="solve-val" id="rStar"></span></button>' +
     '</div>' +
-    '<input type="range" id="v-retAge-slider" class="dv-slider ret" step="1" ' +
-      'aria-label="Retirement age slider">' +
     '<div class="dv-row">' +
       pctField("savePct", "Savings rate", 0.5) +
       '<button class="solve solve-save" id="setSStar" ' +
         'title="Click to set the savings rate to the solved value">solve' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
-    '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
-      'max="60" step="0.5" aria-label="Savings rate slider">' +
     '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
       'solve finds the value that makes spending level through the end age, ' +
       'holding everything else fixed. Each solve is conditional on the other ' +
@@ -588,9 +718,19 @@ function buildInputs() {
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop",
-                "legacy","inflPct","tiltPct"];
+                "legacy","inflPct","tiltPct","rateEnd","rateMid"];
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
+  const glideBox = host.querySelector("#v-glide");
+  glideBox.addEventListener("change", e => { state.glide = e.target.checked; render(); pushHistory(); });
+  const endSlider = host.querySelector("#v-rateEnd-slider");
+  endSlider.addEventListener("input", e => { state.rateEnd = Number(e.target.value); render(); });
+  endSlider.addEventListener("change", () => pushHistory());
+  const kinkBox = host.querySelector("#v-glideKink");
+  kinkBox.addEventListener("change", e => { state.glideKink = e.target.checked; render(); pushHistory(); });
+  const midSlider = host.querySelector("#v-rateMid-slider");
+  midSlider.addEventListener("input", e => { state.rateMid = Number(e.target.value); render(); });
+  midSlider.addEventListener("change", () => pushHistory());
   for (const k of ["penCola", "pen2Cola"]) {
     host.querySelector("#v-" + k).addEventListener("change", e => {
       state[k] = e.target.checked;
@@ -612,20 +752,6 @@ function buildInputs() {
     render();
   });
   tiltSlider.addEventListener("change", () => pushHistory());
-
-  const retSlider = host.querySelector("#v-retAge-slider");
-  retSlider.addEventListener("input", e => {
-    const v = clampVal("retAge", Number(e.target.value));
-    if (v !== null) { state.retAge = v; render(); }
-  });
-  retSlider.addEventListener("change", () => pushHistory());
-
-  const saveSlider = host.querySelector("#v-savePct-slider");
-  saveSlider.addEventListener("input", e => {
-    state.savePct = Number(e.target.value);
-    render();
-  });
-  saveSlider.addEventListener("change", () => pushHistory());
 
 
   host.querySelector("#setRStar").addEventListener("click", () => {
@@ -662,14 +788,22 @@ function refreshInputs(m) {
   if (rSl && document.activeElement !== rSl) rSl.value = state.ratePct;
   const tSl = document.getElementById("v-tiltPct-slider");
   if (tSl && document.activeElement !== tSl) tSl.value = state.tiltPct;
-  const raSl = document.getElementById("v-retAge-slider");
-  if (raSl) {
-    raSl.min = state.startAge;
-    raSl.max = state.endAge - 1;
-    if (document.activeElement !== raSl) raSl.value = state.retAge;
-  }
-  const spSl = document.getElementById("v-savePct-slider");
-  if (spSl && document.activeElement !== spSl) spSl.value = state.savePct;
+  syncBox("v-rateEnd", state.rateEnd);
+  const eSl = document.getElementById("v-rateEnd-slider");
+  if (eSl && document.activeElement !== eSl) eSl.value = state.rateEnd;
+  const gB = document.getElementById("v-glide");
+  if (gB) gB.checked = !!state.glide;
+  const gRow = document.getElementById("glideRow");
+  if (gRow) gRow.style.display = state.glide ? "" : "none";
+  syncBox("v-rateMid", state.rateMid);
+  const mSl = document.getElementById("v-rateMid-slider");
+  if (mSl && document.activeElement !== mSl) mSl.value = state.rateMid;
+  const kB = document.getElementById("v-glideKink");
+  if (kB) kB.checked = !!state.glideKink;
+  const kCheck = document.getElementById("kinkCheckRow");
+  if (kCheck) kCheck.style.display = state.glide ? "" : "none";
+  const kRow = document.getElementById("kinkRow");
+  if (kRow) kRow.style.display = (state.glide && state.glideKink) ? "" : "none";
   syncBox("v-penAmt", state.penAmt);
   syncBox("v-penAge", state.penAge);
   syncBox("v-ssAmt", state.ssAmt);
@@ -755,7 +889,8 @@ let geom = null, lastRows = null;
 function renderChart(m) {
   const svg = document.getElementById("chart");
   const W = svg.clientWidth || 800;
-  const mT = 40, plotH = 380, mB = 40, mL = 66, mR = 66;
+  const mT = 40, plotH = 380, mB = 40, mL = 66;
+  const mR = state.glide ? 128 : 66;      // extra room for the offset rate axis
   const H = mT + plotH + mB;
   const plotB = mT + plotH;
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
@@ -771,6 +906,20 @@ function renderChart(m) {
   const Y1 = v => plotB - v / balMax * plotH;
   const flowMax = Math.max(...rows.map(d => Math.max(d.spend, d.inc))) * 1.15 || 1;
   const Y2 = v => plotB - v / flowMax * plotH;
+
+  /* third axis: the (possibly gliding) growth rate, on its own scale, offset
+     outside the spending axis. rateSeries[k] is the rate for the year ending
+     at age x0+k, in percent. */
+  /* third-axis scale: fixed 0-8%, matching the sliders. A fixed scale keeps
+     the axis stable while a handle is dragged (a data-fit scale would shift
+     under the cursor and fight the drag). */
+  let Y3 = null, rateAxisX = 0;
+  const rateHandles = [];
+  if (state.glide) {
+    Y3 = v => plotB - Math.min(Math.max(v, 0), 8) / 8 * plotH;
+    Y3.lo = 0; Y3.hi = 8;
+    rateAxisX = W - mR + 52;
+  }
 
   const defs = el("defs", {});
   for (const [id, color] of [["gWork", "#0E7C5B"], ["gRet", "#3D6B9E"]]) {
@@ -850,6 +999,48 @@ function renderChart(m) {
     edge(f2, f3);
     edge(f3, f4);
 
+    /* Draggable band edges. Each stream's TOP boundary drags that stream's
+       amount (the handler subtracts the cumulative height of streams below,
+       so stacking is unambiguous). Its vertical edges drag its start/stop
+       ages - except a start pinned to retirement, which moves with the
+       retirement handle instead. The spending line is never draggable:
+       spending is the output. */
+    const streams = [
+      { id:"p1", fLow:() => 0, fHigh:f1 },
+      { id:"p2", fLow:f1, fHigh:f2 },
+      { id:"s1", fLow:f2, fHigh:f3 },
+      { id:"s2", fLow:f3, fHigh:f4 },
+    ];
+    for (const st of streams) {
+      const act = retRows.filter(d => d[st.id] > 0);
+      if (!act.length) continue;
+      const a0s = act[0].age, a1s = act[act.length - 1].age;
+      // amount strip: stepped path along the stream's top over its active span
+      let pd = "M" + X(a0s - 1).toFixed(1) + " " + Y2(st.fHigh(act[0])).toFixed(1);
+      pd += " L" + X(a0s).toFixed(1) + " " + Y2(st.fHigh(act[0])).toFixed(1);
+      for (let i = 1; i < act.length; i++) {
+        const y = Y2(st.fHigh(act[i])).toFixed(1);
+        pd += " L" + X(act[i - 1].age).toFixed(1) + " " + y +
+              " L" + X(act[i].age).toFixed(1) + " " + y;
+      }
+      svg.appendChild(el("path", { d:pd, fill:"none", stroke:"transparent",
+        "stroke-width":12, "class":"band-h", "data-stream":st.id }));
+      // start edge (only when not pinned to retirement)
+      if (a0s - 1 > m.R) {
+        svg.appendChild(el("line", { x1:X(a0s - 1), x2:X(a0s - 1),
+          y1:Y2(st.fHigh(act[0])), y2:Y2(st.fLow(act[0])),
+          stroke:"transparent", "stroke-width":12,
+          "class":"band-v", "data-stream":st.id, "data-side":"start" }));
+      }
+      /* stop edge: always present. When the stream runs to the end age its
+         edge sits at the right frame; dragging it leftward CREATES the stop
+         (and dragging back to the frame restores runs-to-the-end). */
+      svg.appendChild(el("line", { x1:X(a1s), x2:X(a1s),
+        y1:Y2(st.fHigh(act[act.length - 1])), y2:Y2(st.fLow(act[act.length - 1])),
+        stroke:"transparent", "stroke-width":12,
+        "class":"band-v", "data-stream":st.id, "data-side":"stop" }));
+    }
+
     const bandLabel = (txt, fLow, fHigh, color) => {
       const live = retRows.map((d, i) => ({ i, h: fHigh(d) - fLow(d) }))
                           .filter(o => o.h > 1);
@@ -875,11 +1066,48 @@ function renderChart(m) {
     plotB + " L" + X(arr[0].age).toFixed(1) + " " + plotB + " Z";
   if (iR > 0) {
     const work = rows.slice(0, iR + 1);
-    svg.appendChild(el("path", { d:areaOf(work), fill:"url(#gWork)" }));
-    svg.appendChild(el("path", { d:pathOf(work), fill:"none", stroke:"#0E7C5B", "stroke-width":2.4 }));
+    svg.appendChild(el("path", { d:areaOf(work), fill:"url(#gWork)", "pointer-events":"none" }));
+    svg.appendChild(el("path", { d:pathOf(work), fill:"none", stroke:"#0E7C5B", "stroke-width":2.4, "pointer-events":"none" }));
   }
-  svg.appendChild(el("path", { d:areaOf(ret), fill:"url(#gRet)" }));
-  svg.appendChild(el("path", { d:pathOf(ret), fill:"none", stroke:"#3D6B9E", "stroke-width":2.4 }));
+  svg.appendChild(el("path", { d:areaOf(ret), fill:"url(#gRet)", "pointer-events":"none" }));
+  svg.appendChild(el("path", { d:pathOf(ret), fill:"none", stroke:"#3D6B9E", "stroke-width":2.4, "pointer-events":"none" }));
+
+  /* rate line + offset third axis (glide only), drawn under the spending line.
+     The rate-in-age function is piecewise linear by definition, so it is drawn
+     from its anchor points; the round handles at the anchors are draggable
+     (vertically) to set the rates directly on the chart. */
+  if (state.glide && Y3) {
+    const hasKink = state.glideKink && m.R > m.A0 && m.R < m.E;
+    const anchors = [{ key:"ratePct", age:x0, v:state.ratePct }];
+    if (hasKink) anchors.push({ key:"rateMid", age:m.R, v:state.rateMid });
+    anchors.push({ key:"rateEnd", age:x1, v:state.rateEnd });
+
+    const rp = anchors.map((a, i) =>
+      (i === 0 ? "M" : "L") + X(a.age).toFixed(1) + " " + Y3(a.v).toFixed(1)
+    ).join(" ");
+    svg.appendChild(el("path", { d:rp, fill:"none", stroke:"#6B7280",
+      "stroke-width":1.5, "stroke-dasharray":"5 4", "stroke-opacity":0.85 }));
+
+    // offset axis spine + ticks (fixed 0-8%)
+    svg.appendChild(el("line", { x1:rateAxisX, x2:rateAxisX, y1:mT, y2:plotB,
+      stroke:"#6B7280", "stroke-width":1 }));
+    for (let rv = 0; rv <= 8; rv += 2) {
+      svg.appendChild(el("line", { x1:rateAxisX, x2:rateAxisX+4, y1:Y3(rv), y2:Y3(rv),
+        stroke:"#6B7280", "stroke-width":1 }));
+      svg.appendChild(el("text", { x:rateAxisX+8, y:Y3(rv)+3.5, "text-anchor":"start",
+        "font-size":11, fill:"#6B7280" }, rv + "%"));
+    }
+    svg.appendChild(el("text", { x:rateAxisX+4, y:mT-22, "text-anchor":"end",
+      "font-size":11, fill:"#6B7280", "class":"axis-label" }, "rate"));
+
+    // draggable handles at the anchors (appended at the end of the paint
+    // order, below, so the retirement line's grab strip cannot cover them)
+    for (const a of anchors) {
+      rateHandles.push(el("circle", { cx:X(a.age), cy:Y3(a.v), r:6,
+        fill:"#FFFFFF", stroke:"#6B7280", "stroke-width":2,
+        "class":"rate-handle", "data-key":a.key }));
+    }
+  }
 
   let sp = "";
   rows.forEach((d, i) => {
@@ -887,13 +1115,21 @@ function renderChart(m) {
     if (i === 0) sp = "M" + px + " " + py;
     else sp += " V" + py + " H" + px;
   });
-  svg.appendChild(el("path", { d:sp, fill:"none", stroke:"#8A5A2E", "stroke-width":2 }));
+  svg.appendChild(el("path", { d:sp, fill:"none", stroke:"#8A5A2E", "stroke-width":2, "pointer-events":"none" }));
 
   if (m.R > m.A0) {
     svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
       stroke:"#1C2433", "stroke-width":1, "stroke-dasharray":"4 3" }));
     svg.appendChild(el("text", { x:X(m.R), y:mT-8, "text-anchor":"middle",
       "font-size":12.5, fill:"#1C2433", "class":"axis-label" }, "retire " + m.R));
+    /* draggable: a visible handle where the line meets the age axis, plus an
+       invisible wide hit strip along the whole line, so grabbing anywhere on
+       "retire" drags the retirement age */
+    svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
+      stroke:"transparent", "stroke-width":14, "class":"ret-handle" }));
+    svg.appendChild(el("circle", { cx:X(m.R), cy:plotB, r:6,
+      fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
+      "class":"ret-handle" }));
   }
   svg.appendChild(el("circle", { cx:X(m.R), cy:Y1(m.atRet), r:3.5, fill:"#fff",
     stroke:"#1C2433", "stroke-width":1.6 }));
@@ -901,6 +1137,15 @@ function renderChart(m) {
     y:Y1(m.atRet) + (m.R > m.A0 ? 14 : -8),
     "text-anchor":"start", "font-size":12.5,
     fill:"#1C2433", "class":"axis-label" }, fmtAxis(m.atRet)));
+
+  /* legacy handle: the balance line lands on the legacy at the end age, so
+     the landing point is draggable (vertically) to set it. Present even at
+     legacy 0, sitting on the axis, so a bequest can be created by dragging. */
+  const endBal = rows[rows.length - 1].balance;
+  svg.appendChild(el("circle", { cx:X(m.E), cy:Y1(endBal), r:6,
+    fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
+    "class":"legacy-handle" }));
+  for (const h of rateHandles) svg.appendChild(h);
 
   svg.appendChild(el("text", { x:mL-8, y:mT-22, "text-anchor":"start",
     "font-size":11, fill:"#3D6B9E", "class":"axis-label" }, "portfolio (left)"));
@@ -913,14 +1158,138 @@ function renderChart(m) {
   svg.appendChild(el("text", { x:(mL + (W-mR))/2, y:plotB+33, "text-anchor":"middle",
     "font-size":12, fill:"#5A6376", "class":"axis-label" }, "age"));
 
-  const cross = el("g", { id:"cross", visibility:"hidden" });
+  const cross = el("g", { id:"cross", visibility:"hidden", "pointer-events":"none" });
   cross.appendChild(el("line", { id:"crossLine", y1:mT, y2:plotB,
     stroke:"#5A6376", "stroke-width":0.8, "stroke-dasharray":"2 3" }));
   cross.appendChild(el("circle", { id:"crossDot", r:3.5, fill:"#fff", "stroke-width":1.8 }));
   svg.appendChild(cross);
 
-  geom = { X, Y1, mL, mR, W, x0, x1 };
+  geom = { X, Y1, mL, mR, W, x0, x1, mT, plotB, plotH, flowMax, balMax };
   lastRows = rows;
+}
+
+function attachRateDrag() {
+  /* Dragging a rate handle: listeners are delegated (svg for pointerdown,
+     window for move/up) because render() rebuilds the SVG every frame,
+     destroying the circle mid-drag; the drag must not depend on any one
+     element surviving. Vertical position maps to the fixed 0-8% scale. */
+  const svg = document.getElementById("chart");
+  /* stream metadata: state keys and how to compute the stacked height BELOW
+     each stream from a chart row */
+  const STREAMS = {
+    p1: { amt:"penAmt",  age:"penAge",  stop:"penStop",  cola:() => state.penCola,  below: d => 0 },
+    p2: { amt:"pen2Amt", age:"pen2Age", stop:"pen2Stop", cola:() => state.pen2Cola, below: d => d.p1 },
+    s1: { amt:"ssAmt",   age:"ssAge",   stop:"ssStop",   cola:() => true,           below: d => d.p1 + d.p2 },
+    s2: { amt:"ss2Amt",  age:"ss2Age",  stop:"ss2Stop",  cola:() => true,           below: d => d.p1 + d.p2 + d.s1 },
+  };
+  let dragKey = null, dragMode = null, dragMeta = null;
+  const ageAtX = (e, rect) => {
+    const innerW = geom.W - geom.mL - geom.mR;
+    return Math.round(geom.x0 + (e.clientX - rect.left - geom.mL) / innerW * (geom.x1 - geom.x0));
+  };
+  svg.addEventListener("pointerdown", e => {
+    const t = e.target;
+    if (!t.classList) return;
+    const rect = svg.getBoundingClientRect();
+    if (t.classList.contains("rate-handle")) {
+      e.preventDefault();
+      dragKey = t.getAttribute("data-key");
+      dragMode = "rate";
+    } else if (t.classList.contains("ret-handle")) {
+      e.preventDefault();
+      dragMode = "ret";
+    } else if (t.classList.contains("band-h")) {
+      e.preventDefault();
+      const st = STREAMS[t.getAttribute("data-stream")];
+      /* freeze the grab-age context: the stacked height below, the erosion
+         factor there (so a sloped non-COLA top sets today's-dollar amounts
+         no matter where it was grabbed), and the flow scale (so the axis
+         can't shift under the cursor mid-drag) */
+      const grabAge = Math.min(Math.max(ageAtX(e, rect), geom.x0 + 1), geom.x1);
+      const row = lastRows.find(d => d.age === grabAge && d.phase === "retired")
+               || lastRows.filter(d => d.phase === "retired")[0];
+      if (!row) return;
+      dragMode = "amt";
+      dragMeta = {
+        st,
+        below: st.below(row),
+        factor: st.cola() ? 1 : Math.pow(1 + state.inflPct / 100, -(row.age - geom.x0)),
+        flowMax: geom.flowMax,
+      };
+    } else if (t.classList.contains("legacy-handle")) {
+      e.preventDefault();
+      dragMode = "legacy";
+      dragMeta = { balMax: geom.balMax };
+    } else if (t.classList.contains("band-v")) {
+      e.preventDefault();
+      dragMode = "bandx";
+      dragMeta = {
+        st: STREAMS[t.getAttribute("data-stream")],
+        side: t.getAttribute("data-side"),
+      };
+    }
+  });
+  window.addEventListener("pointermove", e => {
+    if (!dragMode || !geom) return;
+    const rect = svg.getBoundingClientRect();
+    if (dragMode === "rate") {
+      const y = e.clientY - rect.top;
+      let rate = (geom.plotB - y) / geom.plotH * 8;
+      rate = Math.min(Math.max(rate, 0), 8);
+      state[dragKey] = Math.round(rate * 10) / 10;
+      /* the kink is anchored AT the retirement age, so its handle drags in
+         both axes: vertical sets the rate, horizontal moves retirement.
+         Clamped to keep retirement strictly inside (current age, end age)
+         so the kink stays defined mid-drag. */
+      if (dragKey === "rateMid") {
+        let a = clampVal("retAge", ageAtX(e, rect));
+        if (a !== null) {
+          a = Math.min(Math.max(a, state.startAge + 1), state.endAge - 1);
+          state.retAge = a;
+        }
+      }
+    } else if (dragMode === "ret") {
+      const v = clampVal("retAge", ageAtX(e, rect));
+      if (v === null || v === state.retAge) return;
+      state.retAge = v;
+    } else if (dragMode === "legacy") {
+      const y = e.clientY - rect.top;
+      let v = (geom.plotB - y) / geom.plotH * dragMeta.balMax;
+      v = Math.max(0, Math.round(v / 1000) * 1000);
+      if (v === state.legacy) return;
+      state.legacy = v;
+    } else if (dragMode === "amt") {
+      const y = e.clientY - rect.top;
+      const flowVal = (geom.plotB - y) / geom.plotH * dragMeta.flowMax;
+      let amt = (flowVal - dragMeta.below) / dragMeta.factor;
+      amt = Math.max(0, Math.round(amt / 100) * 100);
+      if (amt === state[dragMeta.st.amt]) return;
+      state[dragMeta.st.amt] = amt;
+    } else if (dragMode === "bandx") {
+      const age = ageAtX(e, rect);
+      const st = dragMeta.st;
+      if (dragMeta.side === "start") {
+        /* the band's left edge sits at start-1; dragging it to age a means the
+           first payment is at a+1, i.e. the start age is a+1-1 = a */
+        let v = Math.max(Math.round(age), state.retAge);
+        if (v === state[st.age]) return;
+        state[st.age] = v;
+      } else {
+        /* stop edge sits at the last paid age; at or past the end age means
+           "runs to the end" = the 0 sentinel */
+        let v = Math.round(age);
+        const startNow = Math.max(state[st.age], state.retAge) + 1;
+        v = Math.max(v, startNow);
+        const nv = v >= state.endAge ? 0 : v;
+        if (nv === state[st.stop]) return;
+        state[st.stop] = nv;
+      }
+    }
+    render();
+  });
+  window.addEventListener("pointerup", () => {
+    if (dragMode) { dragKey = null; dragMode = null; dragMeta = null; pushHistory(); }
+  });
 }
 
 function attachTooltip() {
@@ -969,11 +1338,13 @@ function attachTooltip() {
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
       row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
     tip.style.display = "block";
-    const bw = box.clientWidth, tw = tip.offsetWidth;
+    const bw = box.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
     let left = px + 14;
     if (left + tw > bw - 4) left = px - tw - 14;
     tip.style.left = left + "px";
-    tip.style.top = (e.clientY - box.getBoundingClientRect().top - 20) + "px";
+    /* pinned low: bottom edge just above the age axis, out of the way of the
+       curves, bands, and drag handles in the upper plot */
+    tip.style.top = (geom.plotB - th - 6) + "px";
 
     function row(l, v) {
       return '<div class="row"><span style="color:#5A6376">' + l + "</span><span>" +
@@ -1058,6 +1429,7 @@ function scenarioLink() {
 applyHash();
 buildInputs();
 attachTooltip();
+attachRateDrag();
 render();
 function applyPreset(obj, btn, flashText) {
   Object.assign(state, JSON.parse(JSON.stringify(obj)));
