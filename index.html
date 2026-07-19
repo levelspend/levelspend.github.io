@@ -132,6 +132,8 @@
   .band-v { cursor:ew-resize; touch-action:none; }
   .legacy-handle { cursor:ns-resize; touch-action:none; }
   .legacy-handle:hover { stroke-width:3; }
+  .bal-handle { cursor:ns-resize; touch-action:none; }
+  .bal-handle:hover { stroke-width:3; }
   #chart text { pointer-events:none; }   /* no text is interactive; never block a drag */
   .masthead { display:flex; align-items:baseline; gap:12px; margin:2px 2px 12px;
               flex-wrap:wrap; row-gap:6px; }
@@ -1221,6 +1223,11 @@ function renderChart(m) {
   svg.appendChild(el("circle", { cx:X(m.E), cy:Y1(endBal), r:6,
     fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
     "class":"legacy-handle" }));
+  /* starting-portfolio handle: the balance line's other endpoint, on the left
+     axis; draggable vertically to set the current portfolio */
+  svg.appendChild(el("circle", { cx:X(m.A0), cy:Y1(state.startBal), r:6,
+    fill:"#FFFFFF", stroke:"var(--accum)", "stroke-width":2,
+    "class":"bal-handle" }));
   for (const h of rateHandles) svg.appendChild(h);
 
   svg.appendChild(el("text", { x:mL-8, y:mT-22, "text-anchor":"start",
@@ -1297,8 +1304,12 @@ function attachRateDrag() {
       };
     } else if (t.classList.contains("legacy-handle")) {
       e.preventDefault();
-      dragMode = "legacy";
-      dragMeta = { balMax: geom.balMax };
+      dragMode = "bal";
+      dragMeta = { balMax: geom.balMax, key: "legacy" };
+    } else if (t.classList.contains("bal-handle")) {
+      e.preventDefault();
+      dragMode = "bal";
+      dragMeta = { balMax: geom.balMax, key: "startBal" };
     } else if (t.classList.contains("band-v")) {
       e.preventDefault();
       dragMode = "bandx";
@@ -1331,12 +1342,12 @@ function attachRateDrag() {
       const v = clampVal("retAge", ageAtX(e, rect));
       if (v === null || v === state.retAge) return;
       state.retAge = v;
-    } else if (dragMode === "legacy") {
+    } else if (dragMode === "bal") {
       const y = e.clientY - rect.top;
       let v = (geom.plotB - y) / geom.plotH * dragMeta.balMax;
       v = Math.max(0, Math.round(v / 1000) * 1000);
-      if (v === state.legacy) return;
-      state.legacy = v;
+      if (v === state[dragMeta.key]) return;
+      state[dragMeta.key] = v;
     } else if (dragMode === "amt") {
       const y = e.clientY - rect.top;
       const flowVal = (geom.plotB - y) / geom.plotH * dragMeta.flowMax;
