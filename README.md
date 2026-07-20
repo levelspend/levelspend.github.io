@@ -42,3 +42,8 @@ in closed form; the retirement-age solve gives the latest whole-year age at
 which retirement spending does not exceed working spending (the exact,
 non-integer level point is shown alongside it). Cash flows use an annual, end-of-year convention.
 The equations are documented in a comment inside the file.
+
+## Feedback / Contact
+
+Active in the [Bogleheads discussion thread](https://www.bogleheads.org/forum/viewtopic.php?t=473403) — that's usually the fastest way to reach me.
+For anything else: levelspend@proton.me
