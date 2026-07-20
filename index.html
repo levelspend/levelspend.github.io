@@ -570,6 +570,10 @@ function clampVal(key, v) {
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
   if (key === "tiltPct") return Math.min(Math.max(v, -10), 10);
   if (key === "rateMid2") return v < 0 ? -1 : Math.max(v, 0);
+  /* growth rates may be negative (a real loss, e.g. cash under inflation),
+     floored at -20%. rateMid2 is excluded: its negative is the coupled
+     sentinel. Money fields keep the non-negative fallthrough below. */
+  if (["ratePct","rateEnd","rateMid"].includes(key)) return Math.max(v, -20);
   return Math.max(v, 0);
 }
 
