@@ -33,6 +33,8 @@
   .lbl { font-size:10px; letter-spacing:.06em; text-transform:uppercase;
          color:var(--ink-soft); display:block; margin-bottom:2px; }
   .note { color:var(--ink-soft); }
+  .disclaimer { max-width:760px; margin:34px auto 24px; padding:0 18px;
+    font-size:11px; line-height:1.5; color:var(--ink-soft); text-align:center; }
   .head { font-family:Charter,Georgia,serif; font-size:14px;
           border-top:1px solid var(--grid); padding-top:10px; margin:12px 0 8px; }
   .head:first-child { border-top:none; padding-top:0; margin-top:0; }
@@ -211,13 +213,14 @@
         <div class="head">If you are still working</div>
         <ol>
           <li>Enter your salary, current portfolio value,
-              current age, planning end age (an age you are unlikely to outlive),
+              start age (typically your current age), planning end age (an age you
+              are unlikely to outlive),
               and any legacy: the amount, in today's dollars, you want left over
               at the end age for heirs or bequests. Enter 0 to spend everything.</li>
           <li>Enter any pension and Social Security amounts in today's dollars,
               with the ages they begin. Enter 0 if none. A spouse's benefits (or any
               additional income stream) go under <b>Spouse</b>; with the
-              spouse's current age entered there, their benefit ages are the
+              spouse's start age entered there, their benefit ages are the
               spouse's own ages. Each stream can also be given a stop age if it ends
               before the end age; leave it blank to run to the end. Stop ages can
               represent benefits ending at an expected death, such as a pension
@@ -252,14 +255,14 @@
       <div>
         <div class="head">If you are already retired</div>
         <ol>
-          <li>Set <b>retirement age equal to your current age</b>, salary to 0, and
+          <li>Set <b>retirement age equal to the start age</b>, salary to 0, and
               savings rate to 0. The working-phase inputs become irrelevant.</li>
-          <li>Enter your portfolio value, current age, planning end age, and any
+          <li>Enter your portfolio value, start age, planning end age, and any
               legacy (the amount you want left over at the end age).</li>
           <li>Enter pension and Social Security in today's dollars with their start
               ages &mdash; including benefits you have not claimed yet. A spouse's benefits (or any
               additional income stream) go under <b>Spouse</b>, with ages on
-              the spouse's own timeline once their current age is entered.
+              the spouse's own timeline once their start age is entered.
               A stop age ends a stream early; leave it blank to run to the end
               age.</li>
           <li>Set the portfolio growth rate as in step 3 opposite.</li>
@@ -283,6 +286,14 @@
   </div>
 </div>
 
+<footer class="disclaimer">
+  For illustrative and educational purposes only. Not intended as financial,
+  investment, tax, or legal advice. No guarantees are made as to the accuracy
+  of the information on this site or the appropriateness of any advice to your
+  particular situation. Consult a qualified professional before making
+  financial decisions.
+</footer>
+
 <script>
 "use strict";
 
@@ -303,7 +314,7 @@ const annuityFactor = (r, n) => r === 0 ? 1 / n : r / (1 - Math.pow(1 + r, -n));
 const aPV = (r, k) => k <= 0 ? 0 : (r === 0 ? k : (1 - Math.pow(1 + r, -k)) / r);
 
 /* ---- rate schedule ----
-   Constant rate (glide off) or linear from ratePct (at current age) to rateEnd
+   Constant rate (glide off) or linear from ratePct (at start age) to rateEnd
    (at end age). rateAt(age) is the one-year real return earned over the year
    ENDING at `age`. growth[k] is the cumulative product (1+r_1)...(1+r_k), i.e.
    the future value at age A0+k of $1 today; disc[k] = 1/growth[k] is the
@@ -319,7 +330,7 @@ function buildSchedule(A0, E, Rkink) {
     const r1 = state.rateEnd / 100;
     const aMid = A0 + k - 0.5;       // rate evaluated at the midpoint of the year
     /* optional third rate anchored at the retirement age: two linear segments
-       r0 (current age) -> rMid (retirement) -> r1 (end age) */
+       r0 (start age) -> rMid (retirement) -> r1 (end age) */
     if (state.glideKink && Rkink !== undefined && Rkink > A0 && Rkink < E) {
       const rM = state.rateMid / 100;
       /* rateMid2 >= 0 decouples the post-retirement segment: the rate JUMPS at
@@ -339,22 +350,26 @@ function buildSchedule(A0, E, Rkink) {
 
 function simulate() {
   const s = state.savePct / 100;
-  const A0 = state.startAge;
-  const R = state.retAge;
-  const E = state.endAge;
+  /* defensive coherence: clamp the age ordering here too, so a scenario link
+     or any non-interactive state load can never yield negative phase lengths
+     (which would poison the math into NaN). Interactive edits are already
+     clamped; this is the belt-and-suspenders for every other entry path. */
+  const A0 = Number.isFinite(state.startAge) ? state.startAge : 20;
+  const E  = Math.max(Number.isFinite(state.endAge) ? state.endAge : A0 + 1, A0 + 1);
+  const R  = Math.min(Math.max(Number.isFinite(state.retAge) ? state.retAge : A0, A0), E);
   const nWork = R - A0, nRet = E - R;
   const contribution = state.salary * s;
   const workSpend = state.salary * (1 - s);
   const infl = state.inflPct / 100;
   const g = state.tiltPct / 100;
 
-  /* Discount/growth tables indexed by whole years from the current age.
+  /* Discount/growth tables indexed by whole years from the start age.
      disc[k] = PV today of $1 at age A0+k;  growth[k] = FV at A0+k of $1 today. */
   const { growth, disc } = buildSchedule(A0, E, R);
   const idx = age => age - A0;                 // table index for an age
   const discAt = age => disc[idx(age)];        // PV today of $1 at that age
 
-  /* Spouse timeline: with the spouse's current age entered, slot-2 ages are
+  /* Spouse timeline: with the spouse's start age entered, slot-2 ages are
      the SPOUSE's own ages; sOff converts them to the primary timeline
      (his 48, her 42: her 62 is his 68). Blank spouse age = same age = 0. */
   const sOff = state.spouseAge > 0 ? A0 - state.spouseAge : 0;
@@ -561,7 +576,7 @@ function fvContribTo(growth, idx, A0, R) {
 /* Latest retirement age at which retirement spending does not exceed
    working spending (the floor of the exact level point). Errs toward a
    small step DOWN at retirement rather than up, matching the usual direction
-   of retirement spending. Clamped at the current age. */
+   of retirement spending. Clamped at the start age. */
 function solveRStar() {
   for (let R = state.startAge; R <= state.endAge - 1; R++)
     if (levelGapAt(R) >= -1e-6) {
@@ -582,7 +597,8 @@ function solveRStarExact(Rint) {
   return hi;
 }
 
-const fmt$ = v => (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
+const fmt$ = v => !Number.isFinite(v) ? "\u2014"
+  : (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
 function fmtAxis(v) {
   const a = Math.abs(v), s = v < 0 ? "−" : "";
   if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
@@ -601,11 +617,14 @@ function niceTicks(max, target) {
 
 /* ---------------- input form ---------------- */
 function clampVal(key, v) {
-  if (!Number.isFinite(v)) return null;
-  if (key === "startAge") return Math.min(Math.max(Math.round(v), 20), state.endAge - 1);
+  // non-finite input (blank, alpha) -> reject: keep the current value
+  if (!Number.isFinite(v)) return state[key];
+  // ages enforce start < retire <= end so no phase can have negative length
+  if (key === "startAge")
+    return Math.min(Math.max(Math.round(v), 20), state.retAge, state.endAge - 1);
   if (key === "retAge")
     return Math.min(Math.max(Math.round(v), state.startAge), state.endAge);
-  if (key === "endAge")  return Math.max(Math.round(v), state.startAge + 1);
+  if (key === "endAge")  return Math.max(Math.round(v), state.retAge, state.startAge + 1);
   if (["penAge","ssAge","pen2Age","ss2Age",
        "penStop","ssStop","pen2Stop","ss2Stop","spouseAge"].includes(key))
     return Math.max(Math.round(v), 0);
@@ -669,7 +688,7 @@ function buildInputs() {
       moneyField("startBal", "Starting portfolio", 10000) +
     '</div>' +
     '<div class="grid-aal">' +
-      numField("startAge", "Current age", 1) +
+      numField("startAge", "Start age", 1) +
       numField("endAge", "End age", 1) +
       moneyField("legacy", "Legacy at end age", 5000) +
     '</div>' +
@@ -687,7 +706,7 @@ function buildInputs() {
       ((state.pen2Amt > 0 || state.ss2Amt > 0 || state.spouseAge > 0) ? " open" : "") + '>' +
       '<summary>Spouse</summary>' +
       '<div class="grid2">' +
-        numField("spouseAge", "Spouse\u2019s current age", 1, "same") +
+        numField("spouseAge", "Spouse\u2019s start age", 1, "same") +
         '<div></div>' +
       '</div>' +
       '<div class="grid-inc">' +
@@ -701,7 +720,7 @@ function buildInputs() {
         numField("ss2Stop", "Stop age", 1, "end") +
       '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'With the spouse\u2019s current age entered, Pension 2 and Social Security 2 ' +
+        'With the spouse\u2019s start age entered, Pension 2 and Social Security 2 ' +
         'ages are the spouse\u2019s own ages, and the tool converts them. Leave the ' +
         'age blank if you were born in the same year.</div>' +
     '</details>' +
@@ -778,7 +797,7 @@ function buildInputs() {
       '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'When on, the growth rate changes linearly from the portfolio growth ' +
-        'rate below (at your current age) to this ending rate (at the end age). ' +
+        'rate below (at the start age) to this ending rate (at the end age). ' +
         'The rate is drawn as a dashed line on its own scale at the far right of ' +
         'the chart; drag the round handles on it to set the rates directly. ' +
         'Optionally, anchor a third rate at the retirement age for a two-segment ' +
@@ -1464,7 +1483,7 @@ function attachRateDrag() {
       state[dragKey] = Math.round(rate * 10) / 10;
       /* the kink is anchored AT the retirement age, so its handle drags in
          both axes: vertical sets the rate, horizontal moves retirement.
-         Clamped to keep retirement strictly inside (current age, end age)
+         Clamped to keep retirement strictly inside (start age, end age)
          so the kink stays defined mid-drag. */
       if (dragKey === "rateMid" || dragKey === "rateMid2") {
         let a = clampVal("retAge", ageAtX(e, rect));
@@ -1598,17 +1617,23 @@ function render() {
     /* enriched diagnosis: how much the level plan implicitly borrows (at the
        growth rate, the model's only price), and roughly how much more money
        today would make it feasible */
-    const peak = Math.round(-m.minBal / 100) * 100;
-    const bridge = minFeasibleStartBal();
     warn.style.display = "block";
-    warn.innerHTML = "<b>Not feasible.</b> Portfolio reaches zero at age " + m.negFrom +
-      ". Keeping spending level would mean implicitly borrowing up to $" +
-      peak.toLocaleString("en-US") + " (at the growth rate)" +
-      (bridge !== null
-        ? "; roughly $" + bridge.toLocaleString("en-US") +
-          " more in the portfolio today would make it feasible."
-        : ".") +
-      " Or uncheck \u201cAllow borrowing\u201d under Advanced to let spending step up instead.";
+    if (!Number.isFinite(m.minBal) || !Number.isFinite(m.negFrom)) {
+      warn.innerHTML = "<b>Not feasible.</b> Please check that the ages are in " +
+        "order (start age, then retirement, then end age) and that the inputs " +
+        "are valid numbers.";
+    } else {
+      const peak = Math.round(-m.minBal / 100) * 100;
+      const bridge = minFeasibleStartBal();
+      warn.innerHTML = "<b>Not feasible.</b> Portfolio reaches zero at age " + m.negFrom +
+        ". Keeping spending level would mean implicitly borrowing up to $" +
+        peak.toLocaleString("en-US") + " (at the growth rate)" +
+        (bridge !== null
+          ? "; roughly $" + bridge.toLocaleString("en-US") +
+            " more in the portfolio today would make it feasible."
+          : ".") +
+        " Or uncheck \u201cAllow borrowing\u201d under Advanced to let spending step up instead.";
+    }
   } else if (!state.allowBorrow && m.steps && m.steps.length > 1) {
     warn.style.display = "block";
     warn.innerHTML = "<b>Spending steps up.</b> Fully level spending would require " +
