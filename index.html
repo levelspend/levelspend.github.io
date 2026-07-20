@@ -8,7 +8,7 @@
   :root {
     --paper:#FAFAF7; --panel:#FFFFFF; --ink:#1C2433; --ink-soft:#5A6376;
     --grid:#E6E8E3; --rule:#C9CCC4; --accum:#0E7C5B; --decum:#3D6B9E;
-    --spend:#8A5A2E; --good:#0E7C5B; --bad:#B3372E; --port:#A57F2C;
+    --spend:#8A5A2E; --good:#0E7C5B; --bad:#B3372E; --port:#A57F2C; --port-text:#846619;
   }
   * { box-sizing:border-box; }
   body {
@@ -42,7 +42,12 @@
     border:1px solid var(--rule); border-radius:3px; padding:4px 7px;
     background:#fff; outline:none;
   }
-  .numbox:focus { border-color:var(--accum); }
+  .numbox:focus { border-color:var(--rule); }
+  /* keyboard focus ring: visible for Tab users, absent for mouse/touch */
+  a:focus-visible, button:focus-visible, input:focus-visible,
+  summary:focus-visible, [tabindex]:focus-visible {
+    outline:2px solid #3D6B9E; outline-offset:2px; border-radius:3px;
+  }
   .numbox::-webkit-outer-spin-button,
   .numbox::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
   .numbox { -moz-appearance:textfield; appearance:textfield; }
@@ -1022,7 +1027,7 @@ function renderStats(m) {
       ? stat("Savings", "—", "var(--ink-soft)", "no working years")
       : stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
              fmt$(saveYr / 12) + "/mo")) +
-    stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port)", "") +
+    stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
     (m.nWork === 0
       ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
       : stat("Working spending", fmt$(m.workSpend), "var(--accum)",
@@ -1113,7 +1118,7 @@ function renderChart(m) {
       svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:Y1(t), y2:Y1(t),
         stroke:"#E6E8E3", "stroke-width":0.8 }));
       svg.appendChild(el("text", { x:mL-8, y:Y1(t)+3.5, "text-anchor":"end",
-        "font-size":11, fill:"#A57F2C" }, fmtAxis(t)));
+        "font-size":11, fill:"#846619" }, fmtAxis(t)));
     }
   }
   if (balMin < 0) {
@@ -1361,7 +1366,7 @@ function renderChart(m) {
   for (const h of rateHandles) svg.appendChild(h);
 
   svg.appendChild(el("text", { x:mL-8, y:mT-22, "text-anchor":"start",
-    "font-size":11, fill:"#A57F2C", "class":"axis-label" }, "portfolio (left)"));
+    "font-size":11, fill:"#846619", "class":"axis-label" }, "portfolio (left)"));
   svg.appendChild(el("text", { x:W-mR+8, y:mT-22, "text-anchor":"end",
     "font-size":11, fill:"#3D6B9E", "class":"axis-label" }, "spending (right)"));
 
