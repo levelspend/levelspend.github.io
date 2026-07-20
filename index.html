@@ -650,6 +650,10 @@ function wireBox(key, box) {
       return;
     }
     state[key] = v;
+    /* write the clamped value back into the box directly: the change event
+       fires while the box is still focused, so refreshInputs' focus guard
+       would skip it and leave a rejected raw value on screen */
+    e.target.value = isMoney ? fmtMoney(v) : v;
     render();
     pushHistory();
   });
