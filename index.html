@@ -438,7 +438,7 @@ function simulate() {
   // set C(s) = salary*(1-s):
   const k1 = (B0grow * discR + pvInc - pvLegacy) / unitPV;   // C at s=0
   const k2 = (state.salary * fvContrib * discR) / unitPV;    // dC/ds * ... per unit s
-  const sStar = (state.salary - k1) / (state.salary + k2);
+  const sStar = unitPV > 0 ? (state.salary - k1) / (state.salary + k2) : NaN;
 
   if (nWork === 0) {
     rows[0].phase = "retired";
@@ -562,7 +562,7 @@ function clampVal(key, v) {
   if (!Number.isFinite(v)) return null;
   if (key === "startAge") return Math.min(Math.max(Math.round(v), 20), state.endAge - 1);
   if (key === "retAge")
-    return Math.min(Math.max(Math.round(v), state.startAge), state.endAge - 1);
+    return Math.min(Math.max(Math.round(v), state.startAge), state.endAge);
   if (key === "endAge")  return Math.max(Math.round(v), state.startAge + 1);
   if (["penAge","ssAge","pen2Age","ss2Age",
        "penStop","ssStop","pen2Stop","ss2Stop","spouseAge"].includes(key))
@@ -935,6 +935,9 @@ function refreshInputs(m) {
   if (m.nWork === 0) {
     document.getElementById("sStar").textContent = "n/a — no working years";
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
+  } else if (m.nRet === 0) {
+    document.getElementById("sStar").textContent = "n/a — no retirement years";
+    setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else {
     setBtn.disabled = false; setBtn.style.opacity = ""; setBtn.style.cursor = "pointer";
     document.getElementById("sStar").textContent =
@@ -966,11 +969,14 @@ function renderStats(m) {
       ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
       : stat("Working spending", fmt$(m.workSpend), "var(--ink)",
              "salary − savings")) +
-    stat("Retirement spending", fmt$(m.S), "var(--decum)",
-         state.tiltPct !== 0
-           ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
-             state.tiltPct + "%/yr after"
-           : "");
+    (m.nRet === 0
+      ? stat("Retirement spending", "—", "var(--ink-soft)",
+             "no retirement years")
+      : stat("Retirement spending", fmt$(m.S), "var(--decum)",
+             state.tiltPct !== 0
+               ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
+                 state.tiltPct + "%/yr after"
+               : ""));
   function stat(l, v, c, sub) {
     return '<div class="stat"><span class="lbl">' + l + '</span>' +
       '<div class="num" style="color:' + c + '">' + v + '</div>' +
@@ -1250,9 +1256,11 @@ function renderChart(m) {
      the landing point is draggable (vertically) to set it. Present even at
      legacy 0, sitting on the axis, so a bequest can be created by dragging. */
   const endBal = rows[rows.length - 1].balance;
-  svg.appendChild(el("circle", { cx:X(m.E), cy:Y1(endBal), r:6,
-    fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
-    "class":"legacy-handle" }));
+  if (m.nRet > 0) {
+    svg.appendChild(el("circle", { cx:X(m.E), cy:Y1(endBal), r:6,
+      fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
+      "class":"legacy-handle" }));
+  }
   /* starting-portfolio handle: the balance line's other endpoint, on the left
      axis; draggable vertically to set the current portfolio */
   svg.appendChild(el("circle", { cx:X(m.A0), cy:Y1(state.startBal), r:6,
