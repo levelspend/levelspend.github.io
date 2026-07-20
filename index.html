@@ -8,7 +8,7 @@
   :root {
     --paper:#FAFAF7; --panel:#FFFFFF; --ink:#1C2433; --ink-soft:#5A6376;
     --grid:#E6E8E3; --rule:#C9CCC4; --accum:#0E7C5B; --decum:#3D6B9E;
-    --spend:#8A5A2E; --good:#0E7C5B; --bad:#B3372E;
+    --spend:#8A5A2E; --good:#0E7C5B; --bad:#B3372E; --port:#A57F2C;
   }
   * { box-sizing:border-box; }
   body {
@@ -63,9 +63,9 @@
   .slider-wrap { padding-bottom:2px; }
   #v-ratePct-slider { width:100%; margin:0; accent-color:#6B7280; }
   #v-rateEnd-slider, #v-rateMid-slider { accent-color:#6B7280; }
-  #v-tiltPct-slider { width:100%; margin:0; accent-color:#8A5A2E; }
+  #v-tiltPct-slider { width:100%; margin:0; accent-color:#6B7280; }
   .dv-slider { width:100%; margin:0 0 8px; }
-  .dv-slider.save { accent-color:var(--accum); }
+  .dv-slider.save { accent-color:#6B7280; }
   .slider-ends { display:flex; justify-content:space-between; font-size:10px;
                  color:var(--ink-soft); margin:1px 2px 0; }
   .adv { margin:2px 0 8px; }
@@ -92,10 +92,10 @@
                  box-shadow:0 2px 5px rgba(28,36,51,0.4); }
   .solve:active { transform:translateY(0);
                   box-shadow:inset 0 1px 3px rgba(0,0,0,0.3); }
-  .solve-ret  { background:var(--decum); }
-  .solve-ret:hover  { background:#345d8a; }
-  .solve-save { background:var(--accum); }
-  .solve-save:hover { background:#0c6b4f; }
+  .solve-ret  { background:#6B7280; }
+  .solve-ret:hover  { background:#5A6170; }
+  .solve-save { background:#6B7280; }
+  .solve-save:hover { background:#5A6170; }
   .solve-val { display:block; font-weight:400; font-size:11px; opacity:.92;
                font-variant-numeric:tabular-nums; margin-top:2px; }
   /* stats */
@@ -184,8 +184,9 @@
         <div id="tip"></div>
       </div>
       <!--
-        Portfolio balance: left axis (accumulation green, drawdown blue, zero at end age).
-        Annual flows: right axis (spending brown step line; pension+SS blue shaded).
+        Portfolio balance: left axis (gold throughout, zero at end age).
+        Annual flows: right axis (spending step line: working green, retirement
+        blue; pension+SS and withdrawal shaded blue).
         Working spending = salary - savings. Retirement spending =
         (B_ret + PV_inc - L*(1+r)^-m)*A, with legacy L left at the end age;
         B_ret = B0*G + salary*s*F, G=(1+r)^n, F=((1+r)^n-1)/r, A=r/(1-(1+r)^-m).
@@ -226,7 +227,7 @@
               much the results move.</li>
           <li>Under <b>Decision variables</b>, enter the retirement age you have in
               mind and the share of salary you currently save.</li>
-          <li>Read the chart and stats: if spending is level (the brown
+          <li>Read the chart and stats: if spending is level (the
               spending line runs unbroken across the retirement age) and the
               portfolio lasts to the end age, the plan is internally consistent.
               If not, either
@@ -289,7 +290,7 @@ const state = {
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
-  glideJump: false, rateMid2: -1,
+  glideJump: false, rateMid2: -1, allowBorrow: true,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -404,9 +405,8 @@ function simulate() {
   const pvLegacy = state.legacy * discAt(E);
   const C = unitPV > 0 ? (atRet * discR + pvInc - pvLegacy) / unitPV : 0;
 
-  let minBal = atRet, minAge = R, negFrom = null, negTo = null;
-  for (let age = R + 1; age <= E; age++) {
-    const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;
+  /* per-age income parts, shared by the level and no-borrow paths */
+  const partsAt = age => {
     const p1 = (age >= penStart && age <= penStop)
       ? (state.penCola  ? state.penAmt  : state.penAmt  * Math.pow(1 + infl, -(age - A0)))
       : 0;
@@ -415,17 +415,54 @@ function simulate() {
       : 0;
     const s1 = (age >= ssStart  && age <= ssStop)  ? state.ssAmt  : 0;
     const s2 = (age >= ss2Start && age <= ss2Stop) ? state.ss2Amt : 0;
+    return { p1, p2, s1, s2, inc: p1 + p2 + s1 + s2 };
+  };
+
+  /* Without borrowing, level spending may be unreachable (income arriving
+     later than it is needed). The most-level feasible plan is piecewise
+     level and only steps UP: repeatedly amortize over the prefix window
+     with the smallest sustainable level (ties -> longest window), which
+     ends with the balance exactly at zero, then recurse from there. Each
+     segment is a closed-form amortization; the whole path never borrows
+     and still lands on the legacy exactly. */
+  let steps = [], segC = {};
+  if (!state.allowBorrow && nRet > 0) {
+    let sAge = R, Bs = atRet;
+    while (sAge < E) {
+      let unit = 0, incPV = 0, bestC = Infinity, bestF = sAge + 1;
+      for (let f = sAge + 1; f <= E; f++) {
+        unit  += Math.pow(1 + g, f - R - 1) * discAt(f);
+        incPV += partsAt(f).inc * discAt(f);
+        const target = f === E ? state.legacy : 0;
+        const c = (Bs * discAt(sAge) + incPV - target * discAt(f)) / unit;
+        if (c <= bestC + 1e-9) { bestC = c; bestF = f; }
+      }
+      steps.push({ from: sAge + 1, to: bestF, c: bestC });
+      for (let a = sAge + 1; a <= bestF; a++) segC[a] = bestC;
+      Bs = bestF === E ? state.legacy : 0;
+      sAge = bestF;
+    }
+  }
+
+  let minBal = atRet, minAge = R, negFrom = null, negTo = null;
+  for (let age = R + 1; age <= E; age++) {
+    const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;
+    const { p1, p2, s1, s2, inc } = partsAt(age);
     const pen = p1 + p2, ss = s1 + s2;
-    const inc = pen + ss;
-    const spendYr = C * Math.pow(1 + g, age - R - 1);
+    const level = (!state.allowBorrow && segC[age] !== undefined) ? segC[age] : C;
+    const spendYr = level * Math.pow(1 + g, age - R - 1);
     const wd = spendYr - inc;
     bal = bal * (1 + rk) - wd;
     if (bal < minBal) { minBal = bal; minAge = age; }
     if (bal < -1e-6) { if (negFrom === null) negFrom = age; negTo = age; }
-    rows.push({ age, balance: Math.max(bal, 0), phase: "retired",
+    rows.push({ age,
+                balance: Math.abs(bal) <= 1e-6 ? 0
+                       : (state.allowBorrow ? bal : Math.max(bal, 0)),
+                phase: "retired",
                 wd, inc, pen, ss, p1, p2, s1, s2, spend: spendYr });
   }
   const feasible = minBal >= -1e-6;
+  const S_first = (!state.allowBorrow && steps.length) ? steps[0].c : C;
 
   /* s* : the savings rate making working spending == first-year retirement
      spending. Retirement spending is linear in s through atRet, so this
@@ -442,13 +479,13 @@ function simulate() {
 
   if (nWork === 0) {
     rows[0].phase = "retired";
-    rows[0].spend = C;
-    rows[0].wd = C;
+    rows[0].spend = S_first;
+    rows[0].wd = S_first;
     rows[0].inc = 0;
   }
 
-  return { rows, atRet, S: C, workSpend, replacement: C / workSpend, sStar, pvInc,
-           R, E, nWork, nRet, A0, feasible, minBal, minAge, negFrom, negTo };
+  return { rows, atRet, S: S_first, workSpend, replacement: S_first / workSpend, sStar, pvInc,
+           steps, R, E, nWork, nRet, A0, feasible, minBal, minAge, negFrom, negTo };
 }
 
 function levelGapAt(R) {
@@ -664,7 +701,8 @@ function buildInputs() {
         'age blank if you were born in the same year.</div>' +
     '</details>' +
     '<details class="adv" id="advBox"' +
-      ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0) ? " open" : "") + '>' +
+      ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0 || state.glide
+        || !state.allowBorrow) ? " open" : "") + '>' +
       '<summary>Advanced</summary>' +
       '<details class="adv sub"' + ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
       '<summary>Inflation (non-adjusted pensions)</summary>' +
@@ -744,6 +782,17 @@ function buildInputs() {
         'rates: enter the same rate at the start and retirement anchors, and the ' +
         'same lower rate after retirement and at the end.</div>' +
       '</details>' +
+      '<details class="adv sub"' + (!state.allowBorrow ? " open" : "") + '>' +
+      '<summary>Allow borrowing</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-allowBorrow"> ' +
+        'Allow borrowing at the growth rate</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Checked, spending is kept level even when that means implicitly ' +
+        'borrowing against income that has not started yet (the plan is then ' +
+        'flagged as not feasible). Unchecked, the plan never spends money it ' +
+        'does not have: spending stays as level as possible and steps up when ' +
+        'later income arrives.</div>' +
+      '</details>' +
     '</details>' +
 
     '<label class="lbl rate-sep" for="v-ratePct">Portfolio growth rate (after inflation)</label>' +
@@ -762,13 +811,15 @@ function buildInputs() {
     '<div class="dv-row">' +
       numField("retAge", "Retirement age", 1) +
       '<button class="solve solve-ret" id="setRStar" ' +
-        'title="Click to set the retirement age to the solved value">solve' +
+        'title="Sets the retirement age so spending stays level through the end age">' +
+        'solve for level spending' +
         '<span class="solve-val" id="rStar"></span></button>' +
     '</div>' +
     '<div class="dv-row">' +
       pctField("savePct", "Savings rate", 0.5) +
       '<button class="solve solve-save" id="setSStar" ' +
-        'title="Click to set the savings rate to the solved value">solve' +
+        'title="Sets the savings rate so spending stays level through the end age">' +
+        'solve for level spending' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
     '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
@@ -803,6 +854,10 @@ function buildInputs() {
     /* turning off the kink also cancels a jump (a jump lives at the kink) */
     if (!state.glideKink) { state.glideJump = false; state.rateMid2 = -1; }
     render(); pushHistory();
+  });
+  const borrowBox = host.querySelector("#v-allowBorrow");
+  borrowBox.addEventListener("change", e => {
+    state.allowBorrow = e.target.checked; render(); pushHistory();
   });
   const jumpBox = host.querySelector("#v-glideJump");
   jumpBox.addEventListener("change", e => {
@@ -887,6 +942,8 @@ function refreshInputs(m) {
   if (eSl && document.activeElement !== eSl) eSl.value = state.rateEnd;
   const gB = document.getElementById("v-glide");
   if (gB) gB.checked = !!state.glide;
+  const abB = document.getElementById("v-allowBorrow");
+  if (abB) abB.checked = !!state.allowBorrow;
   const gRow = document.getElementById("glideRow");
   if (gRow) gRow.style.display = state.glide ? "" : "none";
   syncBox("v-rateMid", state.rateMid);
@@ -945,17 +1002,14 @@ function refreshInputs(m) {
   } else {
     setBtn.disabled = false; setBtn.style.opacity = ""; setBtn.style.cursor = "pointer";
     document.getElementById("sStar").textContent =
-      m.sStar <= 0 ? "balance + income suffice" : "rate: " + (m.sStar * 100).toFixed(1) + "%";
+      m.sStar <= 0 ? "balance + income suffice"
+                   : "setting savings: " + (m.sStar * 100).toFixed(1) + "%";
   }
   const Rs = solveRStar();
   let rTxt;
   if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
   else {
-    rTxt = "age: " + Rs;
-    if (levelGapAt(Rs) < -1e-6) {
-      const xr = Math.round(solveRStarExact(Rs + 1) * 10) / 10;
-      if (xr > Rs) rTxt += " (level near " + xr.toFixed(1) + ")";
-    }
+    rTxt = "setting retirement: " + Rs;
   }
   document.getElementById("rStar").textContent = rTxt;
 }
@@ -966,21 +1020,23 @@ function renderStats(m) {
   document.getElementById("stats").innerHTML =
     (m.nWork === 0
       ? stat("Savings", "—", "var(--ink-soft)", "no working years")
-      : stat("Savings", fmt$(saveYr) + "/yr", "var(--accum)",
+      : stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
              fmt$(saveYr / 12) + "/mo")) +
-    stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--accum)", "") +
+    stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port)", "") +
     (m.nWork === 0
       ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
-      : stat("Working spending", fmt$(m.workSpend), "var(--ink)",
+      : stat("Working spending", fmt$(m.workSpend), "var(--accum)",
              "salary − savings")) +
     (m.nRet === 0
       ? stat("Retirement spending", "—", "var(--ink-soft)",
              "no retirement years")
       : stat("Retirement spending", fmt$(m.S), "var(--decum)",
-             state.tiltPct !== 0
-               ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
-                 state.tiltPct + "%/yr after"
-               : ""));
+             (!state.allowBorrow && m.steps && m.steps.length > 1)
+               ? "steps up at " + m.steps.slice(1).map(st => st.from).join(", ")
+               : state.tiltPct !== 0
+                 ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
+                   state.tiltPct + "%/yr after"
+                 : ""));
   function stat(l, v, c, sub) {
     return '<div class="stat"><span class="lbl">' + l + '</span>' +
       '<div class="num" style="color:' + c + '">' + v + '</div>' +
@@ -1003,7 +1059,8 @@ function renderChart(m) {
   const W = svg.clientWidth || 800;
   const mT = 40, plotH = 380, mB = 40, mL = 66;
   const mR = state.glide ? 128 : 66;      // extra room for the offset rate axis
-  const H = mT + plotH + mB;
+  const debtH = Math.min(0, ...m.rows.map(d => d.balance)) < -1 ? 80 : 0;
+  const H = mT + plotH + mB + debtH;
   const plotB = mT + plotH;
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
   svg.setAttribute("height", H);
@@ -1014,8 +1071,13 @@ function renderChart(m) {
   const innerW = W - mL - mR;
   const X = age => mL + (age - x0) / (x1 - x0) * innerW;
 
-  const balMax = Math.max(...rows.map(d => d.balance)) * 1.06 || 1;
-  const Y1 = v => plotB - v / balMax * plotH;
+  const rawBalMax = Math.max(...rows.map(d => d.balance));
+  const rawBalMin = Math.min(0, ...rows.map(d => d.balance));
+  const balMax = rawBalMax > 1 ? rawBalMax * 1.06 : 1;   // floor: a zero/dust portfolio gets a flat line on the axis, not a full-height speck
+  const balMin = rawBalMin < -1 ? rawBalMin * 1.06 : 0;  // negative region only when borrowing is drawn; debtH computed above
+  const Y1 = v => v >= 0 ? plotB - v / balMax * plotH
+                         : plotB + (v / balMin) * debtH;
+  const yZero = plotB;                                   // $0 stays on the x axis, always
   const flowMax = Math.max(...rows.map(d => Math.max(d.spend, d.inc))) * 1.15 || 1;
   const Y2 = v => plotB - v / flowMax * plotH;
 
@@ -1034,7 +1096,7 @@ function renderChart(m) {
   }
 
   const defs = el("defs", {});
-  for (const [id, color] of [["gWork", "#0E7C5B"], ["gRet", "#3D6B9E"]]) {
+  for (const [id, color] of [["gBal", "#C0973B"]]) {
     const g = el("linearGradient", { id, x1:0, y1:0, x2:0, y2:1 });
     g.appendChild(el("stop", { offset:"0%", "stop-color":color, "stop-opacity":0.12 }));
     g.appendChild(el("stop", { offset:"100%", "stop-color":color, "stop-opacity":0.015 }));
@@ -1046,17 +1108,33 @@ function renderChart(m) {
   const xTicks = [];
   for (let a = Math.ceil(x0 / xStep) * xStep; a <= x1; a += xStep) xTicks.push(a);
 
-  for (const t of niceTicks(balMax, 8)) {
-    svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:Y1(t), y2:Y1(t),
-      stroke:"#E6E8E3", "stroke-width":0.8 }));
-    svg.appendChild(el("text", { x:mL-8, y:Y1(t)+3.5, "text-anchor":"end",
-      "font-size":11, fill:"#3D6B9E" }, fmtAxis(t)));
+  if (rawBalMax > 1) {
+    for (const t of niceTicks(balMax, 8)) {
+      svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:Y1(t), y2:Y1(t),
+        stroke:"#E6E8E3", "stroke-width":0.8 }));
+      svg.appendChild(el("text", { x:mL-8, y:Y1(t)+3.5, "text-anchor":"end",
+        "font-size":11, fill:"#A57F2C" }, fmtAxis(t)));
+    }
+  }
+  if (balMin < 0) {
+    /* debt band below the x axis: mirrored ticks with their own compressed
+       scale; the x axis itself is the $0 line, drawn emphasized so the
+       crossing reads clearly */
+    for (const t of niceTicks(-balMin, 3)) {
+      if (-t < balMin) continue;
+      svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:Y1(-t), y2:Y1(-t),
+        stroke:"#F0E4E2", "stroke-width":0.8 }));
+      svg.appendChild(el("text", { x:mL-8, y:Y1(-t)+3.5, "text-anchor":"end",
+        "font-size":11, fill:"#B3372E" }, "\u2212" + fmtAxis(t)));
+    }
+    svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:plotB, y2:plotB,
+      stroke:"#9AA0AB", "stroke-width":1.2 }));
   }
   for (const t of niceTicks(flowMax, 12)) {
     svg.appendChild(el("line", { x1:W-mR, x2:W-mR+4, y1:Y2(t), y2:Y2(t),
-      stroke:"#8A5A2E", "stroke-width":1 }));
+      stroke:"#3D6B9E", "stroke-width":1 }));
     svg.appendChild(el("text", { x:W-mR+8, y:Y2(t)+3.5, "text-anchor":"start",
-      "font-size":11, fill:"#8A5A2E" }, fmtAxis(t)));
+      "font-size":11, fill:"#3D6B9E" }, fmtAxis(t)));
   }
   for (const a of xTicks)
     svg.appendChild(el("line", { x1:X(a), x2:X(a), y1:mT, y2:plotB,
@@ -1065,9 +1143,9 @@ function renderChart(m) {
   svg.appendChild(el("line", { x1:mL, x2:W-mR, y1:plotB, y2:plotB,
     stroke:"#1C2433", "stroke-width":1 }));
   svg.appendChild(el("line", { x1:mL, x2:mL, y1:mT, y2:plotB,
-    stroke:"#3D6B9E", "stroke-width":1 }));
+    stroke:"#A57F2C", "stroke-width":1 }));
   svg.appendChild(el("line", { x1:W-mR, x2:W-mR, y1:mT, y2:plotB,
-    stroke:"#8A5A2E", "stroke-width":1 }));
+    stroke:"#3D6B9E", "stroke-width":1 }));
 
   /* stacked funding bands (retirement): pension on the bottom, Social Security
      above it, portfolio withdrawal on top; the stack sums to spending. */
@@ -1096,7 +1174,7 @@ function renderChart(m) {
     band(f1, f2, "#3D6B9E", 0.24);
     band(f2, f3, "#3D6B9E", 0.16);
     band(f3, f4, "#3D6B9E", 0.09);
-    band(f4, fTop, "#8A5A2E", 0.10);
+    band(f4, fTop, "#3D6B9E", 0.12);
     /* hairline along the top of each live income band, so adjacent
        same-hue bands read as distinct */
     const edge = (fLow, fHigh) => {
@@ -1168,21 +1246,16 @@ function renderChart(m) {
     bandLabel("pension 2", f1, f2, "#2C4F76");
     bandLabel("Social Security", f2, f3, "#2C4F76");
     bandLabel("Social Security 2", f3, f4, "#2C4F76");
-    bandLabel("withdrawal", f4, fTop, "#6E4724");
+    bandLabel("withdrawal", f4, fTop, "#2C4F76");
   }
 
   const iR = rows.findIndex(d => d.age === m.R);
   const ret = rows.slice(iR);
   const pathOf = arr => arr.map((d,i)=>(i?"L":"M")+X(d.age).toFixed(1)+" "+Y1(d.balance).toFixed(1)).join(" ");
   const areaOf = arr => pathOf(arr) + " L" + X(arr[arr.length-1].age).toFixed(1) + " " +
-    plotB + " L" + X(arr[0].age).toFixed(1) + " " + plotB + " Z";
-  if (iR > 0) {
-    const work = rows.slice(0, iR + 1);
-    svg.appendChild(el("path", { d:areaOf(work), fill:"url(#gWork)", "pointer-events":"none" }));
-    svg.appendChild(el("path", { d:pathOf(work), fill:"none", stroke:"#0E7C5B", "stroke-width":2.4, "pointer-events":"none" }));
-  }
-  svg.appendChild(el("path", { d:areaOf(ret), fill:"url(#gRet)", "pointer-events":"none" }));
-  svg.appendChild(el("path", { d:pathOf(ret), fill:"none", stroke:"#3D6B9E", "stroke-width":2.4, "pointer-events":"none" }));
+    yZero.toFixed(1) + " L" + X(arr[0].age).toFixed(1) + " " + yZero.toFixed(1) + " Z";
+  svg.appendChild(el("path", { d:areaOf(rows), fill:"url(#gBal)", "pointer-events":"none" }));
+  svg.appendChild(el("path", { d:pathOf(rows), fill:"none", stroke:"#A57F2C", "stroke-width":2.4, "pointer-events":"none" }));
 
   /* rate line + offset third axis (glide only), drawn under the spending line.
      The rate-in-age function is piecewise linear by definition, so it is drawn
@@ -1227,13 +1300,28 @@ function renderChart(m) {
     }
   }
 
-  let sp = "";
-  rows.forEach((d, i) => {
-    const px = X(d.age).toFixed(1), py = Y2(d.spend).toFixed(1);
-    if (i === 0) sp = "M" + px + " " + py;
-    else sp += " V" + py + " H" + px;
-  });
-  svg.appendChild(el("path", { d:sp, fill:"none", stroke:"#8A5A2E", "stroke-width":2, "pointer-events":"none" }));
+  /* spending step line, phase-colored to match the stats: working spending
+     green, retirement spending blue; the break at retirement belongs to the
+     retirement segment */
+  /* horizontals only: when the level changes, lift the pen instead of
+     drawing a riser, so jumps (retirement break, income steps) appear as
+     honest gaps rather than vertical strokes */
+  const stepPath = arr => {
+    let p = "", prevY = null;
+    arr.forEach((d, i) => {
+      const px = X(d.age).toFixed(1), py = Y2(d.spend).toFixed(1);
+      if (i === 0) { p = "M" + px + " " + py; prevY = py; return; }
+      const pxPrev = X(arr[i - 1].age).toFixed(1);
+      if (py === prevY) p += " H" + px;
+      else { p += " M" + pxPrev + " " + py + " H" + px; prevY = py; }
+    });
+    return p;
+  };
+  if (iR > 0)
+    svg.appendChild(el("path", { d:stepPath(rows.slice(0, iR + 1)), fill:"none",
+      stroke:"var(--accum)", "stroke-width":3.2, "pointer-events":"none" }));
+  svg.appendChild(el("path", { d:stepPath(rows.slice(iR)), fill:"none",
+    stroke:"#3D6B9E", "stroke-width":3.2, "pointer-events":"none" }));
 
   if (m.R > m.A0) {
     svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
@@ -1246,7 +1334,7 @@ function renderChart(m) {
     svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
       stroke:"transparent", "stroke-width":14, "class":"ret-handle" }));
     svg.appendChild(el("circle", { cx:X(m.R), cy:plotB, r:6,
-      fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
+      fill:"#FFFFFF", stroke:"#6B7280", "stroke-width":2,
       "class":"ret-handle" }));
   }
   svg.appendChild(el("circle", { cx:X(m.R), cy:Y1(m.atRet), r:3.5, fill:"#fff",
@@ -1262,25 +1350,25 @@ function renderChart(m) {
   const endBal = rows[rows.length - 1].balance;
   if (m.nRet > 0) {
     svg.appendChild(el("circle", { cx:X(m.E), cy:Y1(endBal), r:6,
-      fill:"#FFFFFF", stroke:"var(--decum)", "stroke-width":2,
+      fill:"#FFFFFF", stroke:"#6B7280", "stroke-width":2,
       "class":"legacy-handle" }));
   }
   /* starting-portfolio handle: the balance line's other endpoint, on the left
      axis; draggable vertically to set the current portfolio */
   svg.appendChild(el("circle", { cx:X(m.A0), cy:Y1(state.startBal), r:6,
-    fill:"#FFFFFF", stroke:"var(--accum)", "stroke-width":2,
+    fill:"#FFFFFF", stroke:"#6B7280", "stroke-width":2,
     "class":"bal-handle" }));
   for (const h of rateHandles) svg.appendChild(h);
 
   svg.appendChild(el("text", { x:mL-8, y:mT-22, "text-anchor":"start",
-    "font-size":11, fill:"#3D6B9E", "class":"axis-label" }, "portfolio (left)"));
+    "font-size":11, fill:"#A57F2C", "class":"axis-label" }, "portfolio (left)"));
   svg.appendChild(el("text", { x:W-mR+8, y:mT-22, "text-anchor":"end",
-    "font-size":11, fill:"#8A5A2E", "class":"axis-label" }, "spending (right)"));
+    "font-size":11, fill:"#3D6B9E", "class":"axis-label" }, "spending (right)"));
 
   for (const a of xTicks)
-    svg.appendChild(el("text", { x:X(a), y:plotB+16, "text-anchor":"middle",
+    svg.appendChild(el("text", { x:X(a), y:plotB+debtH+16, "text-anchor":"middle",
       "font-size":11, fill:"#5A6376" }, a));
-  svg.appendChild(el("text", { x:(mL + (W-mR))/2, y:plotB+33, "text-anchor":"middle",
+  svg.appendChild(el("text", { x:(mL + (W-mR))/2, y:plotB+debtH+33, "text-anchor":"middle",
     "font-size":12, fill:"#5A6376", "class":"axis-label" }, "age"));
 
   const cross = el("g", { id:"cross", visibility:"hidden", "pointer-events":"none" });
@@ -1289,7 +1377,7 @@ function renderChart(m) {
   cross.appendChild(el("circle", { id:"crossDot", r:3.5, fill:"#fff", "stroke-width":1.8 }));
   svg.appendChild(cross);
 
-  geom = { X, Y1, mL, mR, W, x0, x1, mT, plotB, plotH, flowMax, balMax };
+  geom = { X, Y1, mL, mR, W, x0, x1, mT, plotB, plotH, flowMax, balMax, balMin };
   lastRows = rows;
 }
 
@@ -1347,11 +1435,11 @@ function attachRateDrag() {
     } else if (t.classList.contains("legacy-handle")) {
       e.preventDefault();
       dragMode = "bal";
-      dragMeta = { balMax: geom.balMax, key: "legacy" };
+      dragMeta = { balMax: geom.balMax, balMin: geom.balMin, key: "legacy" };
     } else if (t.classList.contains("bal-handle")) {
       e.preventDefault();
       dragMode = "bal";
-      dragMeta = { balMax: geom.balMax, key: "startBal" };
+      dragMeta = { balMax: geom.balMax, balMin: geom.balMin, key: "startBal" };
     } else if (t.classList.contains("band-v")) {
       e.preventDefault();
       dragMode = "bandx";
@@ -1502,10 +1590,50 @@ function render() {
 
   const warn = document.getElementById("feasWarn");
   if (!m.feasible) {
+    /* enriched diagnosis: how much the level plan implicitly borrows (at the
+       growth rate, the model's only price), and roughly how much more money
+       today would make it feasible */
+    const peak = Math.round(-m.minBal / 100) * 100;
+    const bridge = minFeasibleStartBal();
     warn.style.display = "block";
-    warn.innerHTML = "<b>Not feasible.</b> Portfolio reaches zero at age " + m.negFrom + ".";
+    warn.innerHTML = "<b>Not feasible.</b> Portfolio reaches zero at age " + m.negFrom +
+      ". Keeping spending level would mean implicitly borrowing up to $" +
+      peak.toLocaleString("en-US") + " (at the growth rate)" +
+      (bridge !== null
+        ? "; roughly $" + bridge.toLocaleString("en-US") +
+          " more in the portfolio today would make it feasible."
+        : ".") +
+      " Or uncheck \u201cAllow borrowing\u201d under Advanced to let spending step up instead.";
+  } else if (!state.allowBorrow && m.steps && m.steps.length > 1) {
+    warn.style.display = "block";
+    warn.innerHTML = "<b>Spending steps up.</b> Fully level spending would require " +
+      "borrowing, so the plan holds spending as level as possible instead: " +
+      m.steps.map(st => "$" + Math.round(st.c).toLocaleString("en-US") +
+        " through age " + st.to).join(", ") + ".";
   } else {
     warn.style.display = "none";
+  }
+}
+
+/* smallest additional-today portfolio making the level plan feasible; used
+   only for the warning, so a bounded search is fine. Returns the EXTRA
+   dollars needed (rounded), or null if the search fails to bracket. */
+function minFeasibleStartBal() {
+  const orig = state.startBal;
+  const test = b => { state.startBal = b; return simulate().feasible; };
+  try {
+    let hi = Math.max(orig + 1000, 2000);
+    let ok = false;
+    for (let i = 0; i < 40; i++) { if (test(hi)) { ok = true; break; } hi *= 2; }
+    if (!ok) return null;
+    let lo = orig;
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      if (test(mid)) hi = mid; else lo = mid;
+    }
+    return Math.round((hi - orig) / 1000) * 1000;
+  } finally {
+    state.startBal = orig;
   }
 }
 
