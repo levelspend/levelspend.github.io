@@ -47,3 +47,11 @@ The equations are documented in a comment inside the file.
 
 Active in the [Bogleheads discussion thread](https://www.bogleheads.org/forum/viewtopic.php?t=473403) — that's usually the fastest way to reach me.
 For anything else: levelspend@proton.me
+
+## Disclaimer
+
+For illustrative and educational purposes only. Not intended as financial,
+investment, tax, or legal advice. No guarantees are made as to the accuracy of
+the information on this site or the appropriateness of any advice to your
+particular situation. Consult a qualified professional before making financial
+decisions.
