@@ -22,8 +22,8 @@ Step-by-step instructions for both working and retired users are at the bottom
 of the page.
 
 The tool is intended to be revisited: once a year, or after any major change
-in your finances, refresh the inputs — age, portfolio value, and current
-benefit estimates — and read off the recalculated plan.
+in your finances, refresh the inputs (age, portfolio value, and current
+benefit estimates) and read off the recalculated plan.
 
 ## What it deliberately does not model
 
@@ -31,8 +31,7 @@ benefit estimates — and read off the recalculated plan.
   accounts are spendable only after income tax.
 - **Required minimum distributions and account types.**
 - **Market volatility.** The model uses a single steady real return that you
-  choose. No one knows this rate in advance; the honest way to use the tool is
-  to try several values and see how much the results move.
+  choose. No one knows this rate in advance; try several values and see how much the results move.
 
 These omissions are intentional. The tool answers one question and answers it transparently: given a steady real return, what level of real spending is consistent with your resources? The complete model fits in about 80 lines of readable JavaScript inside the file.
 ## Method
