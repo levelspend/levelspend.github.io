@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.21c -->
+<!-- LevelSpend build 2026.07.21d -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -219,10 +219,10 @@
               and any legacy: the amount, in today's dollars, you want left over
               at the end age for heirs or bequests. Enter 0 to spend everything.</li>
           <li>Enter any pension and Social Security amounts in today's dollars,
-              with the ages they begin. Enter 0 if none. A spouse's benefits (or any
-              additional income stream) go under <b>Spouse</b>; with the
+              with the ages they begin. Enter 0 if none. A spouse's benefits go under <b>Spouse</b>; with the
               spouse's start age entered there, their benefit ages are the
-              spouse's own ages. Each stream can also be given a stop age if it ends
+              spouse's own ages. Two more streams on your own timeline are
+              under <b>More income</b> in <b>Advanced</b>. Each stream can also be given a stop age if it ends
               before the end age; leave it blank to run to the end. Stop ages can
               represent benefits ending at an expected death, such as a pension
               without survivor benefits or the smaller of a couple's two Social
@@ -263,9 +263,10 @@
           <li>Enter your portfolio value, start age, planning end age, and any
               legacy (the amount you want left over at the end age).</li>
           <li>Enter pension and Social Security in today's dollars with their start
-              ages, including benefits you have not claimed yet. A spouse's benefits (or any
-              additional income stream) go under <b>Spouse</b>, with ages on
-              the spouse's own timeline once their start age is entered.
+              ages, including benefits you have not claimed yet. A spouse's benefits go under <b>Spouse</b>, with ages on
+              the spouse's own timeline once their start age is entered. Two
+              more streams on your own timeline are under <b>More income</b>
+              in <b>Advanced</b>.
               A stop age ends a stream early; leave it blank to run to the end
               age.</li>
           <li>Set the portfolio growth rate as in step 3 opposite.</li>
@@ -284,7 +285,8 @@
               this setup even though paychecks are still arriving.</li>
           <li>Follow the already-retired setup above: retirement age equal to the
               start age, salary 0, savings rate 0.</li>
-          <li>Enter your remaining salary as a pension slot: amount per year,
+          <li>Enter your remaining salary as a pension slot (or an Other income
+              slot under <b>Advanced</b>): amount per year,
               start age now, stop age at your last working year. Leave its
               inflation-adjusted box under <b>Advanced</b> checked (the
               default). To the tool, a paycheck for a few more years is just
@@ -312,7 +314,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.21c</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.21d</span>
 </footer>
 
 <script>
@@ -323,9 +325,10 @@ const state = {
   startAge: 55, retAge: 65, endAge: 95,
   penAmt: 15000, penAge: 67, penStop: 0, ssAmt: 30000, ssAge: 70, ssStop: 0,
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
+  inc1Amt: 0, inc1Age: 67, inc1Stop: 0, inc2Amt: 0, inc2Age: 67, inc2Stop: 0,
   spouseAge: 0,
   legacy: 0,
-  inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
+  inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true, tiltPct: 0,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
 };
@@ -398,6 +401,8 @@ function simulate() {
   const ssStart   = Math.max(state.ssAge,   R) + 1;
   const pen2Start = Math.max(state.pen2Age + sOff, R) + 1;
   const ss2Start  = Math.max(state.ss2Age  + sOff, R) + 1;
+  const inc1Start = Math.max(state.inc1Age, R) + 1;   // own timeline: no sOff
+  const inc2Start = Math.max(state.inc2Age, R) + 1;
   const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
   const stopOfS = raw => raw > 0 ? Math.min(raw + sOff, E) : E;
 
@@ -416,10 +421,13 @@ function simulate() {
   };
   const penStop  = stopOf(state.penStop),   ssStop  = stopOf(state.ssStop);
   const pen2Stop = stopOfS(state.pen2Stop), ss2Stop = stopOfS(state.ss2Stop);
+  const inc1StopA = stopOf(state.inc1Stop), inc2StopA = stopOf(state.inc2Stop);
   const pvInc = pvStream(state.penAmt, penStart, penStop, state.penCola)
               + pvStream(state.ssAmt, ssStart, ssStop, true)
               + pvStream(state.pen2Amt, pen2Start, pen2Stop, state.pen2Cola)
-              + pvStream(state.ss2Amt, ss2Start, ss2Stop, true);
+              + pvStream(state.ss2Amt, ss2Start, ss2Stop, true)
+              + pvStream(state.inc1Amt, inc1Start, inc1StopA, state.inc1Cola)
+              + pvStream(state.inc2Amt, inc2Start, inc2StopA, state.inc2Cola);
 
   const rows = [{ age: A0, balance: state.startBal, phase: "work", anchor: true,
                   wd: -contribution, inc: 0, pen: 0, ss: 0,
@@ -456,7 +464,13 @@ function simulate() {
       : 0;
     const s1 = (age >= ssStart  && age <= ssStop)  ? state.ssAmt  : 0;
     const s2 = (age >= ss2Start && age <= ss2Stop) ? state.ss2Amt : 0;
-    return { p1, p2, s1, s2, inc: p1 + p2 + s1 + s2 };
+    const i1 = (age >= inc1Start && age <= inc1StopA)
+      ? (state.inc1Cola ? state.inc1Amt : state.inc1Amt * Math.pow(1 + infl, -(age - A0)))
+      : 0;
+    const i2 = (age >= inc2Start && age <= inc2StopA)
+      ? (state.inc2Cola ? state.inc2Amt : state.inc2Amt * Math.pow(1 + infl, -(age - A0)))
+      : 0;
+    return { p1, p2, s1, s2, i1, i2, inc: p1 + p2 + s1 + s2 + i1 + i2 };
   };
 
   /* Without borrowing, level spending may be unreachable (income arriving
@@ -488,7 +502,7 @@ function simulate() {
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
   for (let age = R + 1; age <= E; age++) {
     const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;
-    const { p1, p2, s1, s2, inc } = partsAt(age);
+    const { p1, p2, s1, s2, i1, i2, inc } = partsAt(age);
     const pen = p1 + p2, ss = s1 + s2;
     const level = (!state.allowBorrow && segC[age] !== undefined) ? segC[age] : C;
     const spendYr = level * Math.pow(1 + g, age - R - 1);
@@ -500,7 +514,7 @@ function simulate() {
                 balance: Math.abs(bal) <= 1e-6 ? 0
                        : (state.allowBorrow ? bal : Math.max(bal, 0)),
                 phase: "retired",
-                wd, inc, pen, ss, p1, p2, s1, s2, spend: spendYr });
+                wd, inc, pen, ss, p1, p2, s1, s2, i1, i2, spend: spendYr });
   }
   const feasible = minBal >= -1e-6;
   const S_first = (!state.allowBorrow && steps.length) ? steps[0].c : C;
@@ -553,6 +567,8 @@ function levelGapAt(R) {
   const ssStart   = Math.max(state.ssAge,   R) + 1;
   const pen2Start = Math.max(state.pen2Age + sOff, R) + 1;
   const ss2Start  = Math.max(state.ss2Age  + sOff, R) + 1;
+  const inc1Start = Math.max(state.inc1Age, R) + 1;   // own timeline: no sOff
+  const inc2Start = Math.max(state.inc2Age, R) + 1;
   const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
   const stopOfS = raw => raw > 0 ? Math.min(raw + sOff, E) : E;
   const pvStream = (amt, start, stop, cola) => {
@@ -567,7 +583,9 @@ function levelGapAt(R) {
   const pvInc = pvStream(state.penAmt, penStart, stopOf(state.penStop), state.penCola)
               + pvStream(state.ssAmt, ssStart, stopOf(state.ssStop), true)
               + pvStream(state.pen2Amt, pen2Start, stopOfS(state.pen2Stop), state.pen2Cola)
-              + pvStream(state.ss2Amt, ss2Start, stopOfS(state.ss2Stop), true);
+              + pvStream(state.ss2Amt, ss2Start, stopOfS(state.ss2Stop), true)
+              + pvStream(state.inc1Amt, inc1Start, stopOf(state.inc1Stop), state.inc1Cola)
+              + pvStream(state.inc2Amt, inc2Start, stopOf(state.inc2Stop), state.inc2Cola);
 
   // FV of portfolio + contributions to R, via the schedule
   const gR = growth[idx(Math.round(R))] !== undefined
@@ -647,8 +665,8 @@ function clampVal(key, v) {
   if (key === "retAge")
     return Math.min(Math.max(Math.round(v), state.startAge), state.endAge);
   if (key === "endAge")  return Math.max(Math.round(v), state.retAge, state.startAge + 1);
-  if (["penAge","ssAge","pen2Age","ss2Age",
-       "penStop","ssStop","pen2Stop","ss2Stop","spouseAge"].includes(key))
+  if (["penAge","ssAge","pen2Age","ss2Age","inc1Age","inc2Age",
+       "penStop","ssStop","pen2Stop","ss2Stop","inc1Stop","inc2Stop","spouseAge"].includes(key))
     return Math.max(Math.round(v), 0);
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
   if (key === "tiltPct") return Math.min(Math.max(v, -10), 10);
@@ -685,7 +703,7 @@ function wireBox(key, box) {
 }
 
 /* helpers to build a labeled field */
-const MONEY_KEYS = ["salary","startBal","penAmt","ssAmt","pen2Amt","ss2Amt","legacy"];
+const MONEY_KEYS = ["salary","startBal","penAmt","ssAmt","pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"];
 const fmtMoney = v => Number(v).toLocaleString("en-US");
 function moneyField(key, label, step) {
   /* text (not number) input: number inputs reject thousands separators.
@@ -760,8 +778,35 @@ function buildInputs() {
     '</details>' +
     '<details class="adv" id="advBox"' +
       ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0 || state.glide
-        || state.allowBorrow) ? " open" : "") + '>' +
+        || state.allowBorrow || state.inc1Amt > 0 || state.inc2Amt > 0
+        || !state.inc1Cola || !state.inc2Cola) ? " open" : "") + '>' +
       '<summary>Advanced</summary>' +
+      '<details class="adv sub"' + ((state.inc1Amt > 0 || state.inc2Amt > 0
+        || !state.inc1Cola || !state.inc2Cola) ? " open" : "") + '>' +
+      '<summary>More income</summary>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Two extra income streams on your own timeline (a spouse\u2019s start ' +
+        'age does not shift these). Income begins no earlier than retirement ' +
+        'age.</div>' +
+      '<div class="grid-inc">' +
+        moneyField("inc1Amt", "Other income 1 ($/yr)", 500) +
+        numField("inc1Age", "Start age", 1) +
+        numField("inc1Stop", "Stop age", 1, "end") +
+      '</div>' +
+      '<div class="note" id="note-inc1" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Begins at retirement; the tool pays no income before retirement age.</div>' +
+      '<label class="adv-check"><input type="checkbox" id="v-inc1Cola"> ' +
+        'Other income 1 is inflation adjusted</label>' +
+      '<div class="grid-inc">' +
+        moneyField("inc2Amt", "Other income 2 ($/yr)", 500) +
+        numField("inc2Age", "Start age", 1) +
+        numField("inc2Stop", "Stop age", 1, "end") +
+      '</div>' +
+      '<div class="note" id="note-inc2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Begins at retirement; the tool pays no income before retirement age.</div>' +
+      '<label class="adv-check"><input type="checkbox" id="v-inc2Cola"> ' +
+        'Other income 2 is inflation adjusted</label>' +
+      '</details>' +
       '<details class="adv sub"' + ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
       '<summary>Inflation (non-adjusted pensions)</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-penCola"> ' +
@@ -892,6 +937,7 @@ function buildInputs() {
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop","spouseAge",
+                "inc1Amt","inc1Age","inc1Stop","inc2Amt","inc2Age","inc2Stop",
                 "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2"];
   // glideJump is a boolean gate, handled in sync below
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
@@ -937,7 +983,7 @@ function buildInputs() {
   const midSlider = host.querySelector("#v-rateMid-slider");
   midSlider.addEventListener("input", e => { state.rateMid = Number(e.target.value); render(); });
   midSlider.addEventListener("change", () => pushHistory());
-  for (const k of ["penCola", "pen2Cola"]) {
+  for (const k of ["penCola", "pen2Cola", "inc1Cola", "inc2Cola"]) {
     host.querySelector("#v-" + k).addEventListener("change", e => {
       state[k] = e.target.checked;
       render();
@@ -1039,10 +1085,16 @@ function refreshInputs(m) {
   syncStop("v-pen2Stop", state.pen2Stop);
   syncStop("v-ss2Stop", state.ss2Stop);
   syncStop("v-spouseAge", state.spouseAge);
+  syncStop("v-inc1Stop", state.inc1Stop);
+  syncStop("v-inc2Stop", state.inc2Stop);
   syncBox("v-pen2Amt", state.pen2Amt);
   syncBox("v-pen2Age", state.pen2Age);
   syncBox("v-ss2Amt", state.ss2Amt);
   syncBox("v-ss2Age", state.ss2Age);
+  syncBox("v-inc1Amt", state.inc1Amt);
+  syncBox("v-inc1Age", state.inc1Age);
+  syncBox("v-inc2Amt", state.inc2Amt);
+  syncBox("v-inc2Age", state.inc2Age);
   syncBox("v-legacy", state.legacy);
   syncBox("v-inflPct", state.inflPct);
   syncBox("v-tiltPct", state.tiltPct);
@@ -1050,6 +1102,10 @@ function refreshInputs(m) {
   if (cb1) cb1.checked = !!state.penCola;
   const cb2 = document.getElementById("v-pen2Cola");
   if (cb2) cb2.checked = !!state.pen2Cola;
+  const cb3 = document.getElementById("v-inc1Cola");
+  if (cb3) cb3.checked = !!state.inc1Cola;
+  const cb4 = document.getElementById("v-inc2Cola");
+  if (cb4) cb4.checked = !!state.inc2Cola;
 
   /* solve readouts */
   const setBtn = document.getElementById("setSStar");
@@ -1229,12 +1285,16 @@ function renderChart(m) {
     const f2 = d => d.p1 + d.p2;
     const f3 = d => d.p1 + d.p2 + d.s1;
     const f4 = d => d.p1 + d.p2 + d.s1 + d.s2;
-    const fTop = d => Math.max(f4(d), d.spend);
+    const f5 = d => f4(d) + (d.i1 || 0);
+    const f6 = d => f5(d) + (d.i2 || 0);
+    const fTop = d => Math.max(f6(d), d.spend);
     band(() => 0, f1, "#3D6B9E", 0.34);
     band(f1, f2, "#3D6B9E", 0.24);
     band(f2, f3, "#3D6B9E", 0.16);
     band(f3, f4, "#3D6B9E", 0.09);
-    band(f4, fTop, "#3D6B9E", 0.12);
+    band(f4, f5, "#3D6B9E", 0.06);
+    band(f5, f6, "#3D6B9E", 0.045);
+    band(f6, fTop, "#3D6B9E", 0.12);
     /* hairline along the top of each live income band, so adjacent
        same-hue bands read as distinct */
     const edge = (fLow, fHigh) => {
@@ -1248,6 +1308,8 @@ function renderChart(m) {
     edge(f1, f2);
     edge(f2, f3);
     edge(f3, f4);
+    edge(f4, f5);
+    edge(f5, f6);
 
     /* Draggable band edges. Each stream's TOP boundary drags that stream's
        amount (the handler subtracts the cumulative height of streams below,
@@ -1260,6 +1322,8 @@ function renderChart(m) {
       { id:"p2", fLow:f1, fHigh:f2 },
       { id:"s1", fLow:f2, fHigh:f3 },
       { id:"s2", fLow:f3, fHigh:f4 },
+      { id:"i1", fLow:f4, fHigh:f5 },
+      { id:"i2", fLow:f5, fHigh:f6 },
     ];
     for (const st of streams) {
       const act = retRows.filter(d => d[st.id] > 0);
@@ -1306,7 +1370,9 @@ function renderChart(m) {
     bandLabel("pension 2", f1, f2, "#2C4F76");
     bandLabel("Social Security", f2, f3, "#2C4F76");
     bandLabel("Social Security 2", f3, f4, "#2C4F76");
-    bandLabel("withdrawal", f4, fTop, "#2C4F76");
+    bandLabel("other income", f4, f5, "#2C4F76");
+    bandLabel("other income 2", f5, f6, "#2C4F76");
+    bandLabel("withdrawal", f6, fTop, "#2C4F76");
   }
 
   const iR = rows.findIndex(d => d.age === m.R);
@@ -1456,6 +1522,8 @@ function attachRateDrag() {
     p2: { amt:"pen2Amt", age:"pen2Age", stop:"pen2Stop", cola:() => state.pen2Cola, below: d => d.p1 },
     s1: { amt:"ssAmt",   age:"ssAge",   stop:"ssStop",   cola:() => true,           below: d => d.p1 + d.p2 + 0 },
     s2: { amt:"ss2Amt",  age:"ss2Age",  stop:"ss2Stop",  cola:() => true,           below: d => d.p1 + d.p2 + d.s1 },
+    i1: { amt:"inc1Amt", age:"inc1Age", stop:"inc1Stop", cola:() => state.inc1Cola, below: d => d.p1 + d.p2 + d.s1 + d.s2 },
+    i2: { amt:"inc2Amt", age:"inc2Age", stop:"inc2Stop", cola:() => state.inc2Cola, below: d => d.p1 + d.p2 + d.s1 + d.s2 + (d.i1 || 0) },
   };
   STREAMS.p2.spouse = true; STREAMS.s2.spouse = true;
   const sOffNow = st => (st.spouse && state.spouseAge > 0)
@@ -1619,6 +1687,12 @@ function attachTooltip() {
             : "") +
           (d.s2 > 0
             ? row("Social Security 2", '<span style="color:#3D6B9E">' + fmt$(d.s2) + "</span>")
+            : "") +
+          (d.i1 > 0
+            ? row("Other income", '<span style="color:#3D6B9E">' + fmt$(d.i1) + "</span>")
+            : "") +
+          (d.i2 > 0
+            ? row("Other income 2", '<span style="color:#3D6B9E">' + fmt$(d.i2) + "</span>")
             : "")
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
       row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
@@ -1661,7 +1735,9 @@ function render() {
   [["note-pen",  state.penAmt  > 0 && state.penAge          < state.retAge],
    ["note-ss",   state.ssAmt   > 0 && state.ssAge           < state.retAge],
    ["note-pen2", state.pen2Amt > 0 && state.pen2Age + sOffN < state.retAge],
-   ["note-ss2",  state.ss2Amt  > 0 && state.ss2Age  + sOffN < state.retAge]
+   ["note-ss2",  state.ss2Amt  > 0 && state.ss2Age  + sOffN < state.retAge],
+   ["note-inc1", state.inc1Amt > 0 && state.inc1Age < state.retAge],
+   ["note-inc2", state.inc2Amt > 0 && state.inc2Age < state.retAge]
   ].forEach(([id, show]) => {
     const el = document.getElementById(id);
     if (el) el.style.display = show ? "block" : "none";
