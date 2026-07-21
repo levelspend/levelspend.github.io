@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.21a -->
+<!-- LevelSpend build 2026.07.21c -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -312,7 +312,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.21a</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.21c</span>
 </footer>
 
 <script>
@@ -1383,20 +1383,22 @@ function renderChart(m) {
   svg.appendChild(el("path", { d:stepPath(rows.slice(iR)), fill:"none",
     stroke:"#3D6B9E", "stroke-width":3.2, "pointer-events":"none" }));
 
-  if (m.R > m.A0) {
-    svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
-      stroke:"#1C2433", "stroke-width":1, "stroke-dasharray":"4 3" }));
-    svg.appendChild(el("text", { x:X(m.R), y:mT-8, "text-anchor":"middle",
-      "font-size":12.5, fill:"#1C2433", "class":"axis-label" }, "retire " + m.R));
-    /* draggable: a visible handle where the line meets the age axis, plus an
-       invisible wide hit strip along the whole line, so grabbing anywhere on
-       "retire" drags the retirement age */
-    svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
-      stroke:"transparent", "stroke-width":14, "class":"ret-handle" }));
-    svg.appendChild(el("circle", { cx:X(m.R), cy:plotB, r:6,
-      fill:"#FFFFFF", stroke:"#6B7280", "stroke-width":2,
-      "class":"ret-handle" }));
-  }
+  /* the retire affordance draws at every age including R === A0 and
+     R === E, so dragging to either boundary is never a trap. Overlap with
+     the balance handle (left edge) and legacy handle (right edge) is safe:
+     both are appended after this strip, so they sit on top and win clicks. */
+  svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
+    stroke:"#1C2433", "stroke-width":1, "stroke-dasharray":"4 3" }));
+  svg.appendChild(el("text", { x:X(m.R), y:mT-8, "text-anchor":"middle",
+    "font-size":12.5, fill:"#1C2433", "class":"axis-label" }, "retire " + m.R));
+  /* draggable: a visible handle where the line meets the age axis, plus an
+     invisible wide hit strip along the whole line, so grabbing anywhere on
+     "retire" drags the retirement age */
+  svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
+    stroke:"transparent", "stroke-width":14, "class":"ret-handle" }));
+  svg.appendChild(el("circle", { cx:X(m.R), cy:plotB, r:6,
+    fill:"#FFFFFF", stroke:"#6B7280", "stroke-width":2,
+    "class":"ret-handle" }));
   svg.appendChild(el("circle", { cx:X(m.R), cy:Y1(m.atRet), r:3.5, fill:"#fff",
     stroke:"#1C2433", "stroke-width":1.6 }));
   svg.appendChild(el("text", { x:X(m.R) + (m.R > m.A0 ? 8 : 6),
