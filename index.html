@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- LevelSpend build 2026.07.21a -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -311,6 +312,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.21a</span>
 </footer>
 
 <script>
@@ -419,7 +421,7 @@ function simulate() {
               + pvStream(state.pen2Amt, pen2Start, pen2Stop, state.pen2Cola)
               + pvStream(state.ss2Amt, ss2Start, ss2Stop, true);
 
-  const rows = [{ age: A0, balance: state.startBal, phase: "work",
+  const rows = [{ age: A0, balance: state.startBal, phase: "work", anchor: true,
                   wd: -contribution, inc: 0, pen: 0, ss: 0,
                   p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend }];
   let bal = state.startBal;
@@ -519,7 +521,8 @@ function simulate() {
   if (nWork === 0) {
     rows[0].phase = "retired";
     rows[0].spend = S_first;
-    rows[0].wd = S_first;
+    rows[0].wd = 0;      /* anchor is a point in time; the first year's flows
+                            are on the next row */
     rows[0].inc = 0;
   }
 
@@ -1599,7 +1602,8 @@ function attachTooltip() {
     tip.innerHTML =
       '<div class="t-age">Age ' + d.age + ' · ' + (retired ? "retired" : "working") + '</div>' +
       row("Balance", '<b style="color:' + color + '">' + fmt$(d.balance) + "</b>") +
-      (retired
+      (d.anchor ? ""
+        : retired
         ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
               fmt$(Math.abs(d.wd))) +
           (d.p1 > 0
