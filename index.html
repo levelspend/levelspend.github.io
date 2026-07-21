@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LevelSpend — a level-spending retirement solver</title>
+<title>LevelSpend: a level-spending retirement solver</title>
 <style>
   :root {
     --paper:#FAFAF7; --panel:#FFFFFF; --ink:#1C2433; --ink-soft:#5A6376;
@@ -242,7 +242,9 @@
               click <b>solve</b> next to retirement age (latest age at which
               retirement spending stays at or below your working level) or
               <b>solve</b> next to savings rate (rate that
-              makes your chosen retirement age work).</li>
+              makes your chosen retirement age work). Hover or tap any year on
+              the chart for that year's detail: income, spending, and the
+              portfolio withdrawal or contribution.</li>
           <li>Revisit once a year, or after any major change in your finances:
               update your age, portfolio value, and any other inputs that have
               changed (salary, Social Security estimate, pension), and re-check.
@@ -260,7 +262,7 @@
           <li>Enter your portfolio value, start age, planning end age, and any
               legacy (the amount you want left over at the end age).</li>
           <li>Enter pension and Social Security in today's dollars with their start
-              ages &mdash; including benefits you have not claimed yet. A spouse's benefits (or any
+              ages, including benefits you have not claimed yet. A spouse's benefits (or any
               additional income stream) go under <b>Spouse</b>, with ages on
               the spouse's own timeline once their start age is entered.
               A stop age ends a stream early; leave it blank to run to the end
@@ -270,9 +272,26 @@
               amount (today's dollars, before tax) your portfolio plus future income
               can sustain through the end age.</li>
           <li>Each year, or after any major change in your finances, refresh all
-              the inputs — age, portfolio value, and income estimates. The updated
+              the inputs: age, portfolio value, and income estimates. The updated
               <b>Retirement spending</b> is your spending level for the year
               ahead.</li>
+        </ol>
+        <div class="head">If you are semi-retired</div>
+        <ol>
+          <li>The test: does your paycheck decide your spending, or do you decide
+              your spending and draw on savings as needed? If the second, use
+              this setup even though paychecks are still arriving.</li>
+          <li>Follow the already-retired setup above: retirement age equal to the
+              start age, salary 0, savings rate 0.</li>
+          <li>Enter your remaining salary as a pension slot: amount per year,
+              start age now, stop age at your last working year. Leave its
+              inflation-adjusted box under <b>Advanced</b> checked (the
+              default). To the tool, a paycheck for a few more years is just
+              another income stream.</li>
+          <li>The tool computes one level spending amount across both phases. In
+              years when the paycheck falls short of it, the difference is a
+              portfolio withdrawal; nothing extra to enter. Hover or tap the
+              chart to see it year by year.</li>
         </ol>
       </div>
     </div>
@@ -306,7 +325,7 @@ const state = {
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, tiltPct: 0,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
-  glideJump: false, rateMid2: -1, allowBorrow: true,
+  glideJump: false, rateMid2: -1, allowBorrow: false,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -701,11 +720,15 @@ function buildInputs() {
       numField("penAge", "Start age", 1) +
       numField("penStop", "Stop age", 1, "end") +
     '</div>' +
+    '<div class="note" id="note-pen" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+      'Begins at retirement; the tool pays no income before retirement age.</div>' +
     '<div class="grid-inc">' +
       moneyField("ssAmt", "Social Security ($/yr)", 500) +
       numField("ssAge", "Start age", 1) +
       numField("ssStop", "Stop age", 1, "end") +
     '</div>' +
+    '<div class="note" id="note-ss" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+      'Begins at retirement; the tool pays no income before retirement age.</div>' +
     '<details class="adv"' +
       ((state.pen2Amt > 0 || state.ss2Amt > 0 || state.spouseAge > 0) ? " open" : "") + '>' +
       '<summary>Spouse</summary>' +
@@ -718,11 +741,15 @@ function buildInputs() {
         numField("pen2Age", "Start age", 1) +
         numField("pen2Stop", "Stop age", 1, "end") +
       '</div>' +
+      '<div class="note" id="note-pen2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Begins at retirement; the tool pays no income before retirement age.</div>' +
       '<div class="grid-inc">' +
         moneyField("ss2Amt", "Social Security 2 ($/yr)", 500) +
         numField("ss2Age", "Start age", 1) +
         numField("ss2Stop", "Stop age", 1, "end") +
       '</div>' +
+      '<div class="note" id="note-ss2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Begins at retirement; the tool pays no income before retirement age.</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'With the spouse\u2019s start age entered, Pension 2 and Social Security 2 ' +
         'ages are the spouse\u2019s own ages, and the tool converts them. Leave the ' +
@@ -730,7 +757,7 @@ function buildInputs() {
     '</details>' +
     '<details class="adv" id="advBox"' +
       ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0 || state.glide
-        || !state.allowBorrow) ? " open" : "") + '>' +
+        || state.allowBorrow) ? " open" : "") + '>' +
       '<summary>Advanced</summary>' +
       '<details class="adv sub"' + ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
       '<summary>Inflation (non-adjusted pensions)</summary>' +
@@ -810,16 +837,18 @@ function buildInputs() {
         'rates: enter the same rate at the start and retirement anchors, and the ' +
         'same lower rate after retirement and at the end.</div>' +
       '</details>' +
-      '<details class="adv sub"' + (!state.allowBorrow ? " open" : "") + '>' +
+      '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-allowBorrow"> ' +
         'Allow borrowing at the growth rate</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Checked, spending is kept level even when that means implicitly ' +
-        'borrowing against income that has not started yet (the plan is then ' +
-        'flagged as not feasible). Unchecked, the plan never spends money it ' +
-        'does not have: spending stays as level as possible and steps up when ' +
-        'later income arrives.</div>' +
+        'Unchecked (the default), the plan never spends money it does not ' +
+        'have: spending stays as level as possible and steps up when later ' +
+        'income arrives. Checked, spending is kept level even when that means ' +
+        'implicitly borrowing against income that has not started yet (the ' +
+        'plan is then flagged as not feasible). Borrowing at the growth rate ' +
+        'is only interesting from a mathematical perspective and is neither ' +
+        'recommended nor realistic.</div>' +
       '</details>' +
     '</details>' +
 
@@ -1022,10 +1051,10 @@ function refreshInputs(m) {
   /* solve readouts */
   const setBtn = document.getElementById("setSStar");
   if (m.nWork === 0) {
-    document.getElementById("sStar").textContent = "n/a — no working years";
+    document.getElementById("sStar").textContent = "n/a (no working years)";
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else if (m.nRet === 0) {
-    document.getElementById("sStar").textContent = "n/a — no retirement years";
+    document.getElementById("sStar").textContent = "n/a (no retirement years)";
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else {
     setBtn.disabled = false; setBtn.style.opacity = ""; setBtn.style.cursor = "pointer";
@@ -1547,7 +1576,7 @@ function attachTooltip() {
   const tip = document.getElementById("tip");
   const box = document.getElementById("chartBox");
 
-  svg.addEventListener("mousemove", e => {
+  const showTip = e => {
     if (!geom || !lastRows) return;
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -1600,8 +1629,10 @@ function attachTooltip() {
       return '<div class="row"><span style="color:#5A6376">' + l + "</span><span>" +
         v + "</span></div>";
     }
-  });
-  svg.addEventListener("mouseleave", hide);
+  };
+  svg.addEventListener("pointermove", showTip);
+  svg.addEventListener("pointerdown", showTip);
+  svg.addEventListener("pointerleave", e => { if (e.pointerType !== "touch") hide(); });
   function hide() {
     tip.style.display = "none";
     const c = svg.querySelector("#cross");
@@ -1616,6 +1647,20 @@ function render() {
   renderStats(m);
   renderChart(m);
 
+  /* clamp notes: shown when a slot has income entered to start before
+     retirement age, which the model delays to retirement (see the
+     Math.max(age, R) clamps in simulate). Slot 2 ages are on the
+     spouse's timeline when a spouse start age is entered. */
+  const sOffN = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
+  [["note-pen",  state.penAmt  > 0 && state.penAge          < state.retAge],
+   ["note-ss",   state.ssAmt   > 0 && state.ssAge           < state.retAge],
+   ["note-pen2", state.pen2Amt > 0 && state.pen2Age + sOffN < state.retAge],
+   ["note-ss2",  state.ss2Amt  > 0 && state.ss2Age  + sOffN < state.retAge]
+  ].forEach(([id, show]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? "block" : "none";
+  });
+
   const warn = document.getElementById("feasWarn");
   if (!m.feasible) {
     /* enriched diagnosis: how much the level plan implicitly borrows (at the
@@ -1627,33 +1672,42 @@ function render() {
         "order (start age, then retirement, then end age) and that the inputs " +
         "are valid numbers.";
     } else {
-      const peak = Math.round(-m.minBal / 100) * 100;
       const bridge = minFeasibleStartBal();
       warn.innerHTML = "<b>Not feasible.</b> Portfolio reaches zero at age " + m.negFrom +
-        ". Keeping spending level would mean implicitly borrowing up to $" +
-        peak.toLocaleString("en-US") + " (at the growth rate)" +
+        ". Keeping spending level would require borrowing." +
         (bridge !== null
-          ? "; roughly $" + bridge.toLocaleString("en-US") +
+          ? " Roughly $" + bridge.toLocaleString("en-US") +
             " more in the portfolio today would make it feasible."
-          : ".") +
+          : "") +
         " Or uncheck \u201cAllow borrowing\u201d under Advanced to let spending step up instead.";
     }
   } else if (!state.allowBorrow && m.steps && m.steps.length > 1) {
     warn.style.display = "block";
-    warn.innerHTML = "<b>Spending steps up.</b> Fully level spending would require " +
+    const bridge = minFeasibleStartBal();
+    warn.innerHTML = "<b>Spending steps up.</b> Level spending after retirement would require " +
       "borrowing, so the plan holds spending as level as possible instead: " +
       m.steps.map(st => "$" + Math.round(st.c).toLocaleString("en-US") +
-        " through age " + st.to).join(", ") + ".";
+        " through age " + st.to).join(", ") + "." +
+      (bridge !== null
+        ? " Adding roughly $" + bridge.toLocaleString("en-US") +
+          " to the portfolio today would make fully level spending feasible."
+        : "") +
+      " (To see the level plan with borrowing, check " +
+      "\u201cAllow borrowing\u201d under Advanced.)";
   } else {
     warn.style.display = "none";
   }
 }
 
-/* smallest additional-today portfolio making the level plan feasible; used
-   only for the warning, so a bounded search is fine. Returns the EXTRA
-   dollars needed (rounded), or null if the search fails to bracket. */
+/* smallest additional-today portfolio making the LEVEL plan feasible; used
+   only for the warnings, so a bounded search is fine. The level model is
+   forced on during the search: in no-borrow mode the stepped plan is
+   feasible by construction, so searching it would trivially return 0.
+   Returns the EXTRA dollars needed (rounded), or null if the search fails
+   to bracket. */
 function minFeasibleStartBal() {
-  const orig = state.startBal;
+  const orig = state.startBal, origAB = state.allowBorrow;
+  state.allowBorrow = true;
   const test = b => { state.startBal = b; return simulate().feasible; };
   try {
     let hi = Math.max(orig + 1000, 2000);
@@ -1668,6 +1722,7 @@ function minFeasibleStartBal() {
     return Math.round((hi - orig) / 1000) * 1000;
   } finally {
     state.startBal = orig;
+    state.allowBorrow = origAB;
   }
 }
 
