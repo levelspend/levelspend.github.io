@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.22v -->
+<!-- LevelSpend build 2026.07.22w -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -349,7 +349,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22v</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22w</span>
 </footer>
 
 <script>
@@ -692,14 +692,36 @@ function niceTicks(max, target) {
 }
 
 /* ---------------- input form ---------------- */
+let ratchetNote = "";
 function clampVal(key, v) {
   // non-finite input (blank, alpha) -> reject: keep the current value
   if (!Number.isFinite(v)) return state[key];
-  // ages enforce start < retire <= end so no phase can have negative length
-  if (key === "startAge")
-    return Math.min(Math.max(Math.round(v), 20), state.retAge, state.endAge - 1);
-  if (key === "retAge")
-    return Math.min(Math.max(Math.round(v), state.startAge), state.endAge);
+  /* ages enforce start <= retire <= end (and start < end). Raising an
+     EARLIER age past a later one ratchets the later ages up: retire >= age
+     now is mandatory, so the bookkeeping belongs to the tool, not the user
+     (an 80-year-old typed into Age now should not bounce off a retirement
+     age of 65). Lowering a LATER age below an earlier one stays a rejection:
+     silently pulling someone's retirement age down would change their plan. */
+  if (key === "startAge") {
+    const nv = Math.max(Math.round(v), 20);
+    if (nv > state.retAge) {
+      state.retAge = nv;
+      ratchetNote = "Retirement age raised to match age now.";
+    }
+    if (nv > state.endAge - 1) {
+      state.endAge = nv + 1;
+      ratchetNote = "Retirement and end ages raised to keep the ages in order.";
+    }
+    return nv;
+  }
+  if (key === "retAge") {
+    const nv = Math.max(Math.round(v), state.startAge);
+    if (nv > state.endAge) {
+      state.endAge = nv;
+      ratchetNote = "End age raised to keep the ages in order.";
+    }
+    return nv;
+  }
   if (key === "endAge")  return Math.max(Math.round(v), state.retAge, state.startAge + 1);
   if (["penAge","ssAge","pen2Age","ss2Age","inc1Age","inc2Age",
        "penStop","ssStop","pen2Stop","ss2Stop","inc1Stop","inc2Stop","spouseAge"].includes(key))
@@ -718,6 +740,7 @@ function wireBox(key, box) {
   const isMoney = MONEY_KEYS.includes(key);
   box.addEventListener("focus", e => { const t = e.target; setTimeout(() => t.select(), 0); });
   box.addEventListener("change", e => {
+    ratchetNote = "";
     const raw = String(e.target.value).replace(/[,\s$]/g, "");
     const blank = key === "rateMid2" ? -1 : 0;   // blank rateMid2 = coupled
     const v = clampVal(key, raw === "" ? blank : Number(raw));
@@ -821,6 +844,7 @@ function buildInputs() {
       numField("endAge", "End age", 1) +
       moneyField("salary", "Salary", 1000) +
     '</div>' +
+    '<div class="note" id="note-ages" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;"></div>' +
     '<div class="grid2">' +
       moneyField("startBal", "Starting portfolio", 10000) +
       moneyField("legacy", "Legacy at end age", 5000,
@@ -1890,6 +1914,11 @@ function render() {
   renderStats(m);
   renderChart(m);
 
+  const agesNote = document.getElementById("note-ages");
+  if (agesNote) {
+    agesNote.textContent = ratchetNote;
+    agesNote.style.display = ratchetNote ? "block" : "none";
+  }
   const exNote = document.getElementById("exampleNote");
   if (exNote) exNote.classList.toggle("ex-hidden",
     !(exampleEligible && exampleLike()));
@@ -2043,6 +2072,7 @@ function scenarioLink() {
   return location.href.split("#")[0] + "#" + parts.join("&");
 }
 applyHash();
+ratchetNote = "";
 buildInputs();
 attachTooltip();
 attachRateDrag();
@@ -2057,6 +2087,7 @@ if (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON) {
   }
 }
 function applyPreset(obj, btn, flashText) {
+  ratchetNote = "";
   Object.assign(state, JSON.parse(JSON.stringify(obj)));
   try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   buildInputs();          // rebuild so drawers re-collapse appropriately
