@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.22q -->
+<!-- LevelSpend build 2026.07.22t -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -346,7 +346,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22q</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22t</span>
 </footer>
 
 <script>
@@ -363,6 +363,7 @@ const state = {
   inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true, tiltPct: 0,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
+  envOn: false,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -1002,6 +1003,15 @@ function buildInputs() {
         'rates: enter the same rate at the start and retirement anchors, and the ' +
         'same lower rate after retirement and at the end.</div>' +
       '</details>' +
+      '<details class="adv sub"' + (state.envOn ? " open" : "") + '>' +
+      '<summary>Rate sensitivity</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-envOn"> ' +
+        'Show spending at ±1% growth</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Draws dashed companion lines: the level spending this same plan ' +
+        'would support if the growth rate were one point lower or one point ' +
+        'higher. Spending absorbs the difference; nothing else changes.</div>' +
+      '</details>' +
       '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-allowBorrow"> ' +
@@ -1047,6 +1057,10 @@ function buildInputs() {
   const borrowBox = host.querySelector("#v-allowBorrow");
   borrowBox.addEventListener("change", e => {
     state.allowBorrow = e.target.checked; render(); pushHistory();
+  });
+  const envBox = host.querySelector("#v-envOn");
+  envBox.addEventListener("change", e => {
+    state.envOn = e.target.checked; render(); pushHistory();
   });
   const jumpBox = host.querySelector("#v-glideJump");
   jumpBox.addEventListener("change", e => {
@@ -1129,6 +1143,8 @@ function refreshInputs(m) {
   if (gB) gB.checked = !!state.glide;
   const abB = document.getElementById("v-allowBorrow");
   if (abB) abB.checked = !!state.allowBorrow;
+  const evB = document.getElementById("v-envOn");
+  if (evB) evB.checked = !!state.envOn;
   const gRow = document.getElementById("glideRow");
   if (gRow) gRow.style.display = state.glide ? "" : "none";
   syncBox("v-rateMid", state.rateMid);
@@ -1250,14 +1266,43 @@ function el(name, attrs, text) {
   if (text != null) e.textContent = text;
   return e;
 }
-let geom = null, lastRows = null;
+let geom = null, lastRows = null, lastEnv = null;
 
 function renderChart(m) {
   const svg = document.getElementById("chart");
   const W = svg.clientWidth || 800;
   const mT = 40, plotH = 380, mB = 40, mL = 66;
   const mR = state.glide ? 128 : 66;      // extra room for the offset rate axis
-  const debtH = Math.min(0, ...m.rows.map(d => d.balance)) < -1 ? 80 : 0;
+  /* rate-sensitivity envelope: the same plan under growth one point lower
+     and one point higher; spending absorbs the difference (ABW framing).
+     Companion sims run against temporarily shifted rate-path keys, restored
+     in finally. rateMid2's -1 sentinel (no second kink) is preserved. */
+  /* the companion sims run on every render, even with the box unchecked, so
+     the y-scales already reserve their headroom: toggling the envelope is a
+     lens change, not a plan change, and must not move the picture. */
+  let envLo = null, envHi = null;
+  {
+    const RK = ["ratePct", "rateEnd", "rateMid", "rateMid2"];
+    const saved = {};
+    for (const k of RK) saved[k] = state[k];
+    const shifted = dv => {
+      for (const k of RK)
+        state[k] = (k === "rateMid2" && saved.rateMid2 === -1)
+          ? -1 : saved[k] + dv;
+      return simulate();
+    };
+    try { envLo = shifted(-1); envHi = shifted(1); }
+    finally { for (const k of RK) state[k] = saved[k]; }
+  }
+  lastEnv = state.envOn && envLo && envHi
+    ? { lo: envLo.rows, hi: envHi.rows } : null;
+  const envBalPools = envLo && envHi
+    ? [...envLo.rows.map(d => d.balance), ...envHi.rows.map(d => d.balance)]
+    : [];
+  /* debt strip counts the envelope only when it is drawn: an invisible
+     companion must not open an empty region below the axis */
+  const envDebtPool = state.envOn ? envBalPools : [];
+  const debtH = Math.min(0, ...m.rows.map(d => d.balance), ...envDebtPool) < -1 ? 80 : 0;
   const H = mT + plotH + mB + debtH;
   const plotB = mT + plotH;
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
@@ -1269,14 +1314,18 @@ function renderChart(m) {
   const innerW = W - mL - mR;
   const X = age => mL + (age - x0) / (x1 - x0) * innerW;
 
-  const rawBalMax = Math.max(...rows.map(d => d.balance));
-  const rawBalMin = Math.min(0, ...rows.map(d => d.balance));
+  const rawBalMax = Math.max(...rows.map(d => d.balance), ...envBalPools);
+  const rawBalMin = Math.min(0, ...rows.map(d => d.balance), ...envDebtPool);
   const balMax = rawBalMax > 1 ? rawBalMax * 1.06 : 1;   // floor: a zero/dust portfolio gets a flat line on the axis, not a full-height speck
   const balMin = rawBalMin < -1 ? rawBalMin * 1.06 : 0;  // negative region only when borrowing is drawn; debtH computed above
   const Y1 = v => v >= 0 ? plotB - v / balMax * plotH
                          : plotB + (v / balMin) * debtH;
   const yZero = plotB;                                   // $0 stays on the x axis, always
-  const flowMax = Math.max(...rows.map(d => Math.max(d.spend, d.inc))) * 1.15 || 1;
+  const envMax = envHi
+    ? Math.max(...envHi.rows.map(d => d.spend), ...envLo.rows.map(d => d.spend))
+    : 0;
+  const flowMax = Math.max(envMax,
+    ...rows.map(d => Math.max(d.spend, d.inc))) * 1.15 || 1;
   const Y2 = v => plotB - v / flowMax * plotH;
 
   /* third axis: the (possibly gliding) growth rate, on its own scale, offset
@@ -1464,6 +1513,11 @@ function renderChart(m) {
   const areaOf = arr => pathOf(arr) + " L" + X(arr[arr.length-1].age).toFixed(1) + " " +
     yZero.toFixed(1) + " L" + X(arr[0].age).toFixed(1) + " " + yZero.toFixed(1) + " Z";
   svg.appendChild(el("path", { d:areaOf(rows), fill:"url(#gBal)", "pointer-events":"none" }));
+  if (state.envOn && envLo && envHi)
+    for (const em of [envLo, envHi])
+      svg.appendChild(el("path", { d:pathOf(em.rows), fill:"none",
+        stroke:"#A57F2C", "stroke-width":1.4, "stroke-dasharray":"5 4",
+        opacity:0.45, "pointer-events":"none", "class":"env-bal" }));
   svg.appendChild(el("path", { d:pathOf(rows), fill:"none", stroke:"#A57F2C", "stroke-width":2.4, "pointer-events":"none" }));
 
   /* rate line + offset third axis (glide only), drawn under the spending line.
@@ -1526,6 +1580,11 @@ function renderChart(m) {
     });
     return p;
   };
+  if (state.envOn && envLo && envHi && iR >= 0)
+    for (const em of [envLo, envHi])
+      svg.appendChild(el("path", { d:stepPath(em.rows.slice(iR)), fill:"none",
+        stroke:"#3D6B9E", "stroke-width":1.6, "stroke-dasharray":"5 4",
+        opacity:0.5, "pointer-events":"none", "class":"env-line" }));
   if (iR > 0)
     svg.appendChild(el("path", { d:stepPath(rows.slice(0, iR + 1)), fill:"none",
       stroke:"var(--accum)", "stroke-width":3.2, "pointer-events":"none" }));
@@ -1755,6 +1814,14 @@ function attachTooltip() {
     tip.innerHTML =
       '<div class="t-age">Age ' + d.age + ' · ' + (retired ? "retired" : "working") + '</div>' +
       row("Balance", '<b style="color:' + color + '">' + fmt$(d.balance) + "</b>") +
+      (lastEnv ? (() => {
+          const lo = lastEnv.lo.find(r => r.age === age);
+          const hi = lastEnv.hi.find(r => r.age === age);
+          return lo && hi && (lo.balance !== d.balance || hi.balance !== d.balance)
+            ? row("At ±1% growth", '<span style="color:#A57F2C">'
+                + fmt$(lo.balance) + " to " + fmt$(hi.balance) + "</span>")
+            : "";
+        })() : "") +
       (d.anchor ? ""
         : retired
         ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
@@ -1778,7 +1845,17 @@ function attachTooltip() {
             ? row("Other income 2", '<span style="color:#3D6B9E">' + fmt$(d.i2) + "</span>")
             : "")
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
-      row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>");
+      row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>") +
+      (lastEnv && d.phase === "retired"
+        ? (() => {
+            const lo = lastEnv.lo.find(r => r.age === age);
+            const hi = lastEnv.hi.find(r => r.age === age);
+            return lo && hi
+              ? row("At ±1% growth", '<span style="color:#3D6B9E">'
+                  + fmt$(lo.spend) + " to " + fmt$(hi.spend) + "</span>")
+              : "";
+          })()
+        : "");
     tip.style.display = "block";
     const bw = box.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
     let left = px + 14;
