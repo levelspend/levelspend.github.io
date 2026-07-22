@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.22h -->
+<!-- LevelSpend build 2026.07.22q -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -93,17 +93,31 @@
     padding:6px 10px; border-radius:4px; cursor:pointer; color:#fff;
     font-family:inherit; font-size:12px; font-weight:600; line-height:1.2;
     border:none; text-align:left;
-    box-shadow:0 1px 3px rgba(28,36,51,0.35);
+    box-shadow:0 2px 5px rgba(28,36,51,0.4);
     transition:transform 0.06s, box-shadow 0.06s;
   }
   .solve:hover { transform:translateY(-1px);
                  box-shadow:0 2px 5px rgba(28,36,51,0.4); }
   .solve:active { transform:translateY(0);
                   box-shadow:inset 0 1px 3px rgba(0,0,0,0.3); }
-  .solve-ret  { background:#6B7280; }
-  .solve-ret:hover  { background:#5A6170; }
-  .solve-save { background:#6B7280; }
-  .solve-save:hover { background:#5A6170; }
+  /* the solve buttons join the green (working) and blue (retirement) spending
+     lines; the fill is that joining, left to right in chart order */
+  .solve-ret  { background:linear-gradient(90deg, #0E7C5B, #3D6B9E); }
+  .solve-ret:hover  { background:linear-gradient(90deg, #0C6D50, #365E8B); }
+  .solve-save { background:linear-gradient(90deg, #0E7C5B, #3D6B9E); }
+  .solve-save:hover { background:linear-gradient(90deg, #0C6D50, #365E8B); }
+  /* one-time attention cue: two soft shadow pulses on first paint of the
+     example scenario, then permanently still. Shadow only (no transform),
+     and inert entirely for users who prefer reduced motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    .solve-cue { animation: solvePulse 1.2s ease-in-out 3s 3; }
+    #setSStar.solve-cue { animation-delay: 3.25s; }
+    @keyframes solvePulse {
+      0%, 100% { box-shadow:0 2px 5px rgba(28,36,51,0.4); }
+      50%      { box-shadow:0 2px 5px rgba(28,36,51,0.4),
+                 0 0 0 9px rgba(28,36,51,0.16); }
+    }
+  }
   .solve-val { display:block; font-weight:400; font-size:11px; opacity:.92;
                font-variant-numeric:tabular-nums; margin-top:2px; }
   /* stats */
@@ -122,9 +136,21 @@
   /* example marker: same banner grammar as the warning, but calm paper-and-ink
      colors so it reads as a note, not an alarm */
   #exampleNote {
-    display:none; background:#F3F0E6; border:1px solid var(--rule);
+    background:#F3F0E6; border:1px solid var(--rule);
     border-radius:4px; padding:9px 12px; margin-bottom:10px;
     font-size:12.5px; line-height:1.4; color:var(--ink);
+    overflow:hidden; max-height:64px;
+    transition:max-height .28s ease, opacity .18s ease,
+               padding .28s ease, margin-bottom .28s ease,
+               border-width .28s ease;
+  }
+  /* hiding collapses smoothly instead of snapping the layout upward */
+  #exampleNote.ex-hidden {
+    max-height:0; opacity:0; padding-top:0; padding-bottom:0;
+    margin-bottom:0; border-width:0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #exampleNote { transition:none; }
   }
   #chartBox { position:relative; }
   #tip {
@@ -320,7 +346,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22h</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22q</span>
 </footer>
 
 <script>
@@ -732,6 +758,54 @@ function numField(key, label, step, ph, title) {
     (ph ? ' placeholder="' + ph + '"' : '') + '></div>';
 }
 
+/* ---------------- solve animation ----------------
+   The chart already renders arbitrary states at drag speed, so animating a
+   solve is a clock driving the same render(): interpolate the ONE key the
+   solve changes. savePct glides (continuous); retAge steps whole years
+   (the engine's tables are year-indexed; fractional R is not a state).
+   History records only the endpoint. Any pointerdown/keydown (or popstate)
+   during the tween snaps to the target and cancels: the user always wins,
+   and a half-solved state is never the resting state. Reduced motion jumps. */
+let solveTween = null;
+function endTween(t, snap) {
+  if (solveTween !== t) return;
+  solveTween = null;
+  document.removeEventListener("pointerdown", t.cancel, true);
+  document.removeEventListener("keydown", t.cancel, true);
+  window.removeEventListener("popstate", t.cancel);
+  if (snap) { state[t.key] = t.target; render(); pushHistory(); }
+}
+function animateSolve(key, target) {
+  if (solveTween) solveTween.cancel();     // finish any running tween first
+  const from = state[key];
+  const reduced = window.matchMedia
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced || from === target) {
+    state[key] = target; render(); pushHistory(); return;
+  }
+  const stepped = key === "retAge";
+  const dur = stepped
+    ? Math.min(1000, Math.max(220, Math.abs(target - from) * 150))
+    : 700;
+  const ease = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+  const t0 = performance.now();
+  const t = { key, target };
+  t.cancel = () => endTween(t, true);
+  solveTween = t;
+  document.addEventListener("pointerdown", t.cancel, true);
+  document.addEventListener("keydown", t.cancel, true);
+  window.addEventListener("popstate", t.cancel);
+  (function frame(now) {
+    if (solveTween !== t) return;
+    const p = Math.min(1, (now - t0) / dur);
+    const v = from + (target - from) * ease(p);
+    state[key] = stepped ? Math.round(v) : v;
+    render();
+    if (p < 1) requestAnimationFrame(frame);
+    else endTween(t, true);
+  })(t0);
+}
+
 function buildInputs() {
   const host = document.getElementById("inputs");
   host.innerHTML =
@@ -1020,16 +1094,12 @@ function buildInputs() {
     if (Rs === null) return;
     const v = clampVal("retAge", Rs);
     if (v === null) return;
-    state.retAge = v;
-    render();
-    pushHistory();
+    animateSolve("retAge", v);
   });
   host.querySelector("#setSStar").addEventListener("click", () => {
     const m = simulate();
     if (m.nWork === 0) return;
-    state.savePct = Math.min(100, Math.max(0, m.sStar * 100));
-    render();
-    pushHistory();
+    animateSolve("savePct", Math.min(100, Math.max(0, m.sStar * 100)));
   });
 }
 
@@ -1126,13 +1196,16 @@ function refreshInputs(m) {
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else {
     setBtn.disabled = false; setBtn.style.opacity = ""; setBtn.style.cursor = "pointer";
+    const sTarget = Math.min(100, Math.max(0, m.sStar * 100));
     document.getElementById("sStar").textContent =
       m.sStar <= 0 ? "balance + income suffice"
-                   : "setting savings: " + (m.sStar * 100).toFixed(1) + "%";
+      : Math.abs(state.savePct - sTarget) < 0.05 ? "spending is level"
+      : "setting savings: " + (m.sStar * 100).toFixed(1) + "%";
   }
   const Rs = solveRStar();
   let rTxt;
   if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
+  else if (clampVal("retAge", Rs) === state.retAge) rTxt = "spending is level";
   else {
     rTxt = "setting retirement: " + Rs;
   }
@@ -1738,9 +1811,8 @@ function render() {
   renderChart(m);
 
   const exNote = document.getElementById("exampleNote");
-  if (exNote) exNote.style.display =
-    (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON)
-      ? "block" : "none";
+  if (exNote) exNote.classList.toggle("ex-hidden",
+    !(exampleEligible && exampleLike()));
 
   /* clamp notes: shown when a slot has income entered to start before
      retirement age, which the model delays to retirement (see the
@@ -1856,6 +1928,15 @@ const DEFAULTS = JSON.parse(JSON.stringify(state));
    even if those numbers happen to equal the defaults; the "default example"
    button restores eligibility along with the example itself. */
 const DEFAULTS_JSON = JSON.stringify(DEFAULTS);
+/* the banner tolerates differences in the two Decision variables: solve
+   presses, the retire-line drag, and hand-set retAge/savePct leave every
+   other number an example number, so the label stays true and stays up */
+const DEC_KEYS = ["retAge", "savePct"];
+function exampleLike() {
+  const a = Object.assign({}, state), b = Object.assign({}, DEFAULTS);
+  for (const k of DEC_KEYS) { delete a[k]; delete b[k]; }
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 let exampleEligible = !(location.hash && location.hash.length >= 2);
 function applyHash() {
   if (!location.hash || location.hash.length < 2) return;
@@ -1886,6 +1967,15 @@ buildInputs();
 attachTooltip();
 attachRateDrag();
 render();
+/* solve-button cue: fires once per page load, only when the untouched
+   example is showing (the marker's own gate); never for scenario links,
+   never re-armed by rebuilds */
+if (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON) {
+  for (const id of ["setRStar", "setSStar"]) {
+    const b = document.getElementById(id);
+    if (b) b.classList.add("solve-cue");
+  }
+}
 function applyPreset(obj, btn, flashText) {
   Object.assign(state, JSON.parse(JSON.stringify(obj)));
   try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
