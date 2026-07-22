@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.21d -->
+<!-- LevelSpend build 2026.07.22f -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -119,6 +119,13 @@
     color:#7A241D;
   }
   #feasWarn b { color:var(--bad); }
+  /* example marker: same banner grammar as the warning, but calm paper-and-ink
+     colors so it reads as a note, not an alarm */
+  #exampleNote {
+    display:none; background:#F3F0E6; border:1px solid var(--rule);
+    border-radius:4px; padding:9px 12px; margin-bottom:10px;
+    font-size:12.5px; line-height:1.4; color:var(--ink);
+  }
   #chartBox { position:relative; }
   #tip {
     position:absolute; pointer-events:none; display:none;
@@ -213,12 +220,11 @@
       <div>
         <div class="head">If you are still working</div>
         <ol>
-          <li>Enter your salary, current portfolio value,
-              start age (typically your current age), planning end age (an age you
-              are unlikely to outlive),
-              and any legacy: the amount, in today's dollars, you want left over
+          <li>Enter your age now, planning end age (an age you are unlikely to
+              outlive), and salary; then your starting portfolio and any
+              legacy: the amount, in today's dollars, you want left over
               at the end age for heirs or bequests. Enter 0 to spend everything.</li>
-          <li>Enter any pension and Social Security amounts in today's dollars,
+          <li>Enter any Social Security and pension amounts in today's dollars,
               with the ages they begin. Enter 0 if none. A spouse's benefits go under <b>Spouse</b>; with the
               spouse's start age entered there, their benefit ages are the
               spouse's own ages. Two more streams on your own timeline are
@@ -228,7 +234,7 @@
               without survivor benefits or the smaller of a couple's two Social
               Security checks. Spending itself stays level to the end age. If a
               pension pays a fixed amount with no inflation adjustment, see
-              <b>Advanced</b> below the income fields.</li>
+              <b>Advanced</b> at the bottom of the panel.</li>
           <li>Set the expected long-run <b>portfolio growth rate</b>. This is a
               real (after-inflation) return: real returns have historically ranged
               from roughly 2% to 7% depending on the era and starting valuations.
@@ -258,11 +264,11 @@
       <div>
         <div class="head">If you are already retired</div>
         <ol>
-          <li>Set <b>retirement age equal to the start age</b>, salary to 0, and
+          <li>Set <b>retirement age equal to age now</b>, salary to 0, and
               savings rate to 0. The working-phase inputs become irrelevant.</li>
-          <li>Enter your portfolio value, start age, planning end age, and any
+          <li>Enter your age now, planning end age, portfolio value, and any
               legacy (the amount you want left over at the end age).</li>
-          <li>Enter pension and Social Security in today's dollars with their start
+          <li>Enter Social Security and pension in today's dollars with their start
               ages, including benefits you have not claimed yet. A spouse's benefits go under <b>Spouse</b>, with ages on
               the spouse's own timeline once their start age is entered. Two
               more streams on your own timeline are under <b>More income</b>
@@ -283,8 +289,8 @@
           <li>The test: does your paycheck decide your spending, or do you decide
               your spending and draw on savings as needed? If the second, use
               this setup even though paychecks are still arriving.</li>
-          <li>Follow the already-retired setup above: retirement age equal to the
-              start age, salary 0, savings rate 0.</li>
+          <li>Follow the already-retired setup above: retirement age equal to
+              age now, salary 0, savings rate 0.</li>
           <li>Enter your remaining salary as a pension slot (or an Other income
               slot under <b>Advanced</b>): amount per year,
               start age now, stop age at your last working year. Leave its
@@ -314,7 +320,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.21d</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22f</span>
 </footer>
 
 <script>
@@ -705,10 +711,11 @@ function wireBox(key, box) {
 /* helpers to build a labeled field */
 const MONEY_KEYS = ["salary","startBal","penAmt","ssAmt","pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"];
 const fmtMoney = v => Number(v).toLocaleString("en-US");
-function moneyField(key, label, step) {
+function moneyField(key, label, step, title) {
   /* text (not number) input: number inputs reject thousands separators.
      inputmode keeps the numeric keypad on mobile. */
-  return '<div class="field"><label class="lbl">' + label + '</label>' +
+  return '<div class="field"' + (title ? ' title="' + title + '"' : '') +
+    '><label class="lbl">' + label + '</label>' +
     '<div class="money"><span class="unit">$</span>' +
     '<input type="text" inputmode="numeric" autocomplete="off" ' +
     'class="numbox" id="v-' + key + '"></div></div>';
@@ -718,8 +725,9 @@ function pctField(key, label, step) {
     '<div class="pct"><input type="number" class="numbox" id="v-' + key +
     '" step="' + step + '"><span class="unit">%</span></div></div>';
 }
-function numField(key, label, step, ph) {
-  return '<div class="field"><label class="lbl">' + label + '</label>' +
+function numField(key, label, step, ph, title) {
+  return '<div class="field"' + (title ? ' title="' + title + '"' : '') +
+    '><label class="lbl">' + label + '</label>' +
     '<input type="number" class="numbox" id="v-' + key + '" step="' + step + '"' +
     (ph ? ' placeholder="' + ph + '"' : '') + '></div>';
 }
@@ -727,28 +735,33 @@ function numField(key, label, step, ph) {
 function buildInputs() {
   const host = document.getElementById("inputs");
   host.innerHTML =
-    '<div class="grid2">' +
-      moneyField("salary", "Salary", 1000) +
-      moneyField("startBal", "Starting portfolio", 10000) +
-    '</div>' +
+    '<div id="exampleNote">' +
+      '<b>Example numbers.</b> Replace with yours.</div>' +
     '<div class="grid-aal">' +
-      numField("startAge", "Start age", 1) +
+      numField("startAge", "Age now", 1, null,
+        "Your age today; the projection runs from here to the end age") +
       numField("endAge", "End age", 1) +
-      moneyField("legacy", "Legacy at end age", 5000) +
+      moneyField("salary", "Salary", 1000) +
     '</div>' +
-    '<div class="grid-inc">' +
-      moneyField("penAmt", "Pension ($/yr)", 500) +
-      numField("penAge", "Start age", 1) +
-      numField("penStop", "Stop age", 1, "end") +
+    '<div class="grid2">' +
+      moneyField("startBal", "Starting portfolio", 10000) +
+      moneyField("legacy", "Legacy at end age", 5000,
+        "Portfolio value you want remaining at the end age; enter 0 to spend everything") +
     '</div>' +
-    '<div class="note" id="note-pen" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-      'Begins at retirement; the tool pays no income before retirement age.</div>' +
+    '<div class="sep" style="border-top:1px solid var(--grid); margin:12px 0 10px;"></div>' +
     '<div class="grid-inc">' +
       moneyField("ssAmt", "Social Security ($/yr)", 500) +
       numField("ssAge", "Start age", 1) +
       numField("ssStop", "Stop age", 1, "end") +
     '</div>' +
     '<div class="note" id="note-ss" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+      'Begins at retirement; the tool pays no income before retirement age.</div>' +
+    '<div class="grid-inc">' +
+      moneyField("penAmt", "Pension ($/yr)", 500) +
+      numField("penAge", "Start age", 1) +
+      numField("penStop", "Stop age", 1, "end") +
+    '</div>' +
+    '<div class="note" id="note-pen" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
       'Begins at retirement; the tool pays no income before retirement age.</div>' +
     '<details class="adv"' +
       ((state.pen2Amt > 0 || state.ss2Amt > 0 || state.spouseAge > 0) ? " open" : "") + '>' +
@@ -758,24 +771,54 @@ function buildInputs() {
         '<div></div>' +
       '</div>' +
       '<div class="grid-inc">' +
-        moneyField("pen2Amt", "Pension 2 ($/yr)", 500) +
-        numField("pen2Age", "Start age", 1) +
-        numField("pen2Stop", "Stop age", 1, "end") +
-      '</div>' +
-      '<div class="note" id="note-pen2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Begins at retirement; the tool pays no income before retirement age.</div>' +
-      '<div class="grid-inc">' +
         moneyField("ss2Amt", "Social Security 2 ($/yr)", 500) +
         numField("ss2Age", "Start age", 1) +
         numField("ss2Stop", "Stop age", 1, "end") +
       '</div>' +
       '<div class="note" id="note-ss2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Begins at retirement; the tool pays no income before retirement age.</div>' +
+      '<div class="grid-inc">' +
+        moneyField("pen2Amt", "Pension 2 ($/yr)", 500) +
+        numField("pen2Age", "Start age", 1) +
+        numField("pen2Stop", "Stop age", 1, "end") +
+      '</div>' +
+      '<div class="note" id="note-pen2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Begins at retirement; the tool pays no income before retirement age.</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'With the spouse\u2019s start age entered, Pension 2 and Social Security 2 ' +
+        'With the spouse\u2019s start age entered, Social Security 2 and Pension 2 ' +
         'ages are the spouse\u2019s own ages, and the tool converts them. Leave the ' +
         'age blank if you were born in the same year.</div>' +
     '</details>' +
+        '<label class="lbl rate-sep" for="v-ratePct">Portfolio growth rate (after inflation)</label>' +
+    '<div class="rate-row">' +
+      '<div class="pct"><input type="number" class="numbox" id="v-ratePct" ' +
+        'step="0.1" aria-label="Portfolio growth rate after inflation">' +
+        '<span class="unit">%</span></div>' +
+      '<div class="slider-wrap">' +
+        '<input type="range" id="v-ratePct-slider" min="0" max="8" step="0.1" ' +
+          'aria-label="Real growth rate slider">' +
+        '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="head">Decision variables</div>' +
+    '<div class="dv-row">' +
+      numField("retAge", "Retirement age", 1) +
+      '<button class="solve solve-ret" id="setRStar" ' +
+        'title="Sets the retirement age so spending stays level through the end age, at the current savings rate">' +
+        'solve for level spending' +
+        '<span class="solve-val" id="rStar"></span></button>' +
+    '</div>' +
+    '<div class="dv-row">' +
+      pctField("savePct", "Savings rate", 0.5) +
+      '<button class="solve solve-save" id="setSStar" ' +
+        'title="Sets the savings rate so spending stays level through the end age, at the current retirement age">' +
+        'solve for level spending' +
+        '<span class="solve-val" id="sStar"></span></button>' +
+    '</div>' +
+    '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
+      'max="60" step="0.5" aria-label="Savings rate slider">' +
+    '<div class="sep" style="border-top:1px solid var(--grid); margin:12px 0 10px;"></div>' +
     '<details class="adv" id="advBox"' +
       ((!state.penCola || !state.pen2Cola || state.tiltPct !== 0 || state.glide
         || state.allowBorrow || state.inc1Amt > 0 || state.inc2Amt > 0
@@ -876,7 +919,7 @@ function buildInputs() {
       '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'When on, the growth rate changes linearly from the portfolio growth ' +
-        'rate below (at the start age) to this ending rate (at the end age). ' +
+        'rate above (at age now) to this ending rate (at the end age). ' +
         'The rate is drawn as a dashed line on its own scale at the far right of ' +
         'the chart; drag the round handles on it to set the rates directly. ' +
         'Optionally, anchor a third rate at the retirement age for a two-segment ' +
@@ -898,41 +941,7 @@ function buildInputs() {
         'is only interesting from a mathematical perspective and is neither ' +
         'recommended nor realistic.</div>' +
       '</details>' +
-    '</details>' +
-
-    '<label class="lbl rate-sep" for="v-ratePct">Portfolio growth rate (after inflation)</label>' +
-    '<div class="rate-row">' +
-      '<div class="pct"><input type="number" class="numbox" id="v-ratePct" ' +
-        'step="0.1" aria-label="Portfolio growth rate after inflation">' +
-        '<span class="unit">%</span></div>' +
-      '<div class="slider-wrap">' +
-        '<input type="range" id="v-ratePct-slider" min="0" max="8" step="0.1" ' +
-          'aria-label="Real growth rate slider">' +
-        '<div class="slider-ends"><span>0%</span><span>8%</span></div>' +
-      '</div>' +
-    '</div>' +
-
-    '<div class="head">Decision variables</div>' +
-    '<div class="dv-row">' +
-      numField("retAge", "Retirement age", 1) +
-      '<button class="solve solve-ret" id="setRStar" ' +
-        'title="Sets the retirement age so spending stays level through the end age">' +
-        'solve for level spending' +
-        '<span class="solve-val" id="rStar"></span></button>' +
-    '</div>' +
-    '<div class="dv-row">' +
-      pctField("savePct", "Savings rate", 0.5) +
-      '<button class="solve solve-save" id="setSStar" ' +
-        'title="Sets the savings rate so spending stays level through the end age">' +
-        'solve for level spending' +
-        '<span class="solve-val" id="sStar"></span></button>' +
-    '</div>' +
-    '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
-      'max="60" step="0.5" aria-label="Savings rate slider">' +
-    '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-      'solve finds the value that makes spending level through the end age, ' +
-      'holding everything else fixed. Each solve is conditional on the other ' +
-      'decision variable\u2019s current value.</div>';
+    '</details>';
 
   const keys = ["salary","startBal","startAge","retAge","endAge","savePct","ratePct",
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
@@ -1263,8 +1272,9 @@ function renderChart(m) {
   svg.appendChild(el("line", { x1:W-mR, x2:W-mR, y1:mT, y2:plotB,
     stroke:"#3D6B9E", "stroke-width":1 }));
 
-  /* stacked funding bands (retirement): pension on the bottom, Social Security
-     above it, portfolio withdrawal on top; the stack sums to spending. */
+  /* stacked funding bands (retirement): Social Security on the bottom, pension
+     above it (mirroring the form's field order), then spouse benefits, other
+     income, and portfolio withdrawal on top; the stack sums to spending. */
   const retRows = rows.filter(d => d.phase === "retired");
   if (retRows.length > 1) {
     const stepPts = f => {
@@ -1281,10 +1291,10 @@ function renderChart(m) {
       const d = "M" + pts.map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L") + " Z";
       svg.appendChild(el("path", { d, fill, "fill-opacity":op, stroke:"none" }));
     };
-    const f1 = d => d.p1;
-    const f2 = d => d.p1 + d.p2;
-    const f3 = d => d.p1 + d.p2 + d.s1;
-    const f4 = d => d.p1 + d.p2 + d.s1 + d.s2;
+    const f1 = d => d.s1;
+    const f2 = d => d.s1 + d.p1;
+    const f3 = d => d.s1 + d.p1 + d.s2;
+    const f4 = d => d.s1 + d.p1 + d.s2 + d.p2;
     const f5 = d => f4(d) + (d.i1 || 0);
     const f6 = d => f5(d) + (d.i2 || 0);
     const fTop = d => Math.max(f6(d), d.spend);
@@ -1318,10 +1328,10 @@ function renderChart(m) {
        retirement handle instead. The spending line is never draggable:
        spending is the output. */
     const streams = [
-      { id:"p1", fLow:() => 0, fHigh:f1 },
-      { id:"p2", fLow:f1, fHigh:f2 },
-      { id:"s1", fLow:f2, fHigh:f3 },
-      { id:"s2", fLow:f3, fHigh:f4 },
+      { id:"s1", fLow:() => 0, fHigh:f1 },
+      { id:"p1", fLow:f1, fHigh:f2 },
+      { id:"s2", fLow:f2, fHigh:f3 },
+      { id:"p2", fLow:f3, fHigh:f4 },
       { id:"i1", fLow:f4, fHigh:f5 },
       { id:"i2", fLow:f5, fHigh:f6 },
     ];
@@ -1366,10 +1376,10 @@ function renderChart(m) {
         "text-anchor":"end", "font-size":11, fill:color,
         "class":"axis-label" }, txt));
     };
-    bandLabel("pension", () => 0, f1, "#2C4F76");
-    bandLabel("pension 2", f1, f2, "#2C4F76");
-    bandLabel("Social Security", f2, f3, "#2C4F76");
-    bandLabel("Social Security 2", f3, f4, "#2C4F76");
+    bandLabel("Social Security", () => 0, f1, "#2C4F76");
+    bandLabel("pension", f1, f2, "#2C4F76");
+    bandLabel("Social Security 2", f2, f3, "#2C4F76");
+    bandLabel("pension 2", f3, f4, "#2C4F76");
     bandLabel("other income", f4, f5, "#2C4F76");
     bandLabel("other income 2", f5, f6, "#2C4F76");
     bandLabel("withdrawal", f6, fTop, "#2C4F76");
@@ -1518,10 +1528,10 @@ function attachRateDrag() {
   /* stream metadata: state keys and how to compute the stacked height BELOW
      each stream from a chart row */
   const STREAMS = {
-    p1: { amt:"penAmt",  age:"penAge",  stop:"penStop",  cola:() => state.penCola,  below: d => 0 },
-    p2: { amt:"pen2Amt", age:"pen2Age", stop:"pen2Stop", cola:() => state.pen2Cola, below: d => d.p1 },
-    s1: { amt:"ssAmt",   age:"ssAge",   stop:"ssStop",   cola:() => true,           below: d => d.p1 + d.p2 + 0 },
-    s2: { amt:"ss2Amt",  age:"ss2Age",  stop:"ss2Stop",  cola:() => true,           below: d => d.p1 + d.p2 + d.s1 },
+    s1: { amt:"ssAmt",   age:"ssAge",   stop:"ssStop",   cola:() => true,           below: d => 0 },
+    p1: { amt:"penAmt",  age:"penAge",  stop:"penStop",  cola:() => state.penCola,  below: d => d.s1 },
+    s2: { amt:"ss2Amt",  age:"ss2Age",  stop:"ss2Stop",  cola:() => true,           below: d => d.s1 + d.p1 },
+    p2: { amt:"pen2Amt", age:"pen2Age", stop:"pen2Stop", cola:() => state.pen2Cola, below: d => d.s1 + d.p1 + d.s2 },
     i1: { amt:"inc1Amt", age:"inc1Age", stop:"inc1Stop", cola:() => state.inc1Cola, below: d => d.p1 + d.p2 + d.s1 + d.s2 },
     i2: { amt:"inc2Amt", age:"inc2Age", stop:"inc2Stop", cola:() => state.inc2Cola, below: d => d.p1 + d.p2 + d.s1 + d.s2 + (d.i1 || 0) },
   };
@@ -1676,17 +1686,17 @@ function attachTooltip() {
         : retired
         ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
               fmt$(Math.abs(d.wd))) +
-          (d.p1 > 0
-            ? row("Pension", '<span style="color:#3D6B9E">' + fmt$(d.p1) + "</span>")
-            : "") +
-          (d.p2 > 0
-            ? row("Pension 2", '<span style="color:#3D6B9E">' + fmt$(d.p2) + "</span>")
-            : "") +
           (d.s1 > 0
             ? row("Social Security", '<span style="color:#3D6B9E">' + fmt$(d.s1) + "</span>")
             : "") +
+          (d.p1 > 0
+            ? row("Pension", '<span style="color:#3D6B9E">' + fmt$(d.p1) + "</span>")
+            : "") +
           (d.s2 > 0
             ? row("Social Security 2", '<span style="color:#3D6B9E">' + fmt$(d.s2) + "</span>")
+            : "") +
+          (d.p2 > 0
+            ? row("Pension 2", '<span style="color:#3D6B9E">' + fmt$(d.p2) + "</span>")
             : "") +
           (d.i1 > 0
             ? row("Other income", '<span style="color:#3D6B9E">' + fmt$(d.i1) + "</span>")
@@ -1727,6 +1737,11 @@ function render() {
   renderStats(m);
   renderChart(m);
 
+  const exNote = document.getElementById("exampleNote");
+  if (exNote) exNote.style.display =
+    (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON)
+      ? "block" : "none";
+
   /* clamp notes: shown when a slot has income entered to start before
      retirement age, which the model delays to retirement (see the
      Math.max(age, R) clamps in simulate). Slot 2 ages are on the
@@ -1751,7 +1766,7 @@ function render() {
     warn.style.display = "block";
     if (!Number.isFinite(m.minBal) || !Number.isFinite(m.negFrom)) {
       warn.innerHTML = "<b>Not feasible.</b> Please check that the ages are in " +
-        "order (start age, then retirement, then end age) and that the inputs " +
+        "order (age now, then retirement, then end age) and that the inputs " +
         "are valid numbers.";
     } else {
       const bridge = minFeasibleStartBal();
@@ -1835,6 +1850,13 @@ window.addEventListener("popstate", e => {
    sent to any server (fragments stay in the browser), so "nothing you type is
    sent anywhere" remains true; a link only exists if the user copies it. */
 const DEFAULTS = JSON.parse(JSON.stringify(state));
+/* Example marker: the muted "Example numbers" line above the inputs shows
+   only while the state is exactly the default example. A scenario link is
+   someone's real numbers, so a hash present at load suppresses the marker
+   even if those numbers happen to equal the defaults; the "default example"
+   button restores eligibility along with the example itself. */
+const DEFAULTS_JSON = JSON.stringify(DEFAULTS);
+let exampleEligible = !(location.hash && location.hash.length >= 2);
 function applyHash() {
   if (!location.hash || location.hash.length < 2) return;
   const pairs = location.hash.slice(1).split("&");
@@ -1875,12 +1897,13 @@ function applyPreset(obj, btn, flashText) {
   setTimeout(() => { btn.textContent = t; }, 1200);
 }
 document.getElementById("resetBtn").addEventListener("click", e => {
+  exampleEligible = true;
   applyPreset(DEFAULTS, e.target, "restored");
 });
 document.getElementById("clearBtn").addEventListener("click", e => {
   const blank = JSON.parse(JSON.stringify(DEFAULTS));
   for (const k of ["startBal","salary","savePct","penAmt","ssAmt",
-                   "pen2Amt","ss2Amt","legacy"])
+                   "pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"])
     blank[k] = 0;
   applyPreset(blank, e.target, "cleared");
   const first = document.getElementById("v-salary");
