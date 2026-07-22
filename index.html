@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.22f -->
+<!-- LevelSpend build 2026.07.22h -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -175,7 +175,7 @@
   <span class="site-tag">a level-spending retirement solver</span>
   <span class="mast-actions">
     <button class="mast-btn" id="shareBtn"
-      title="Copy a link that reopens the tool with your current inputs">copy scenario link</button>
+      title="Copy a link that reopens the tool with your current inputs. The link is the scenario's only storage; bookmark it or paste it anywhere to keep it.">copy scenario link</button>
     <button class="mast-btn" id="clearBtn"
       title="Zero all dollar amounts so you can enter your own numbers">clear</button>
     <button class="mast-btn" id="resetBtn"
@@ -320,7 +320,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22f</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22h</span>
 </footer>
 
 <script>
@@ -1901,7 +1901,10 @@ document.getElementById("resetBtn").addEventListener("click", e => {
   applyPreset(DEFAULTS, e.target, "restored");
 });
 document.getElementById("clearBtn").addEventListener("click", e => {
-  const blank = JSON.parse(JSON.stringify(DEFAULTS));
+  /* zero the dollars IN PLACE: ages, rates, spouse timeline, and Advanced
+     settings are the user's own facts and survive a clear. The canonical
+     slate is the "default example" button's job, not this one's. */
+  const blank = JSON.parse(JSON.stringify(state));
   for (const k of ["startBal","salary","savePct","penAmt","ssAmt",
                    "pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"])
     blank[k] = 0;
