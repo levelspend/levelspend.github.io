@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.23i -->
+<!-- LevelSpend build 2026.07.23j -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -254,6 +254,27 @@
         chart above recomputes as you draw.
       </div>
     </div>
+    <div class="card" id="spendCard" style="padding:12px 16px 10px; margin-top:12px; display:none;">
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px;">
+        <button class="mast-btn" id="spendReset" type="button">reset shape</button>
+        <span style="color:var(--ink-soft);">y-axis
+          <input type="number" class="numbox" id="v-spendYMin" step="10"
+            style="width:52px;" aria-label="Spending axis minimum percent"> to
+          <input type="number" class="numbox" id="v-spendYMax" step="10"
+            style="width:52px;" aria-label="Spending axis maximum percent"> %</span>
+      </div>
+      <svg id="spendStrip" width="100%" viewBox="0 0 800 192"
+           style="display:block; margin-top:6px; touch-action:none; cursor:crosshair;"></svg>
+      <div style="font-size:11px; color:var(--ink-soft); line-height:1.45;">
+        Draw with the mouse: each retirement year's spending as a percentage of
+        the first year, which stays pinned at 100%. Undrawn years follow the
+        tilt setting. The chart above recomputes as you draw. Values left
+        of the dashed retirement marker are
+        stored but inactive; move the retirement age to bring them into the
+        plan. The y-axis range above is a lens: narrowing it never changes
+        stored values, and values outside it draw pinned at the edge.
+      </div>
+    </div>
   </div>
 
 </div>
@@ -273,8 +294,8 @@
               Enter 0 to spend everything.</li>
           <li>Enter <b>Social Security</b> and <b>pension</b> in today's
               dollars, with the ages they begin. Enter 0 if none. A spouse's
-              benefits go under <b>Spouse</b>; with the spouse's <b>start
-              age</b> entered there, their benefit ages are the spouse's own.
+              benefits go under <b>Spouse</b>; with the spouse's <b>age
+              now</b> entered there, their benefit ages are the spouse's own.
               Two more retirement income streams on your own timeline are
               under <b>More income</b> in <b>Advanced</b>. A <b>stop age</b>
               ends a stream early, such as a pension without survivor
@@ -326,7 +347,7 @@
               dollars with their start ages. For a benefit already being
               paid, enter your <b>age now</b> as its <b>start age</b>; any
               earlier age gives the same result. A spouse's benefits go
-              under <b>Spouse</b>; with the spouse's <b>start age</b>
+              under <b>Spouse</b>; with the spouse's <b>age now</b>
               entered there, their benefit ages are the spouse's own. Two
               more retirement income streams on your own timeline are under
               <b>More income</b> in <b>Advanced</b>. A <b>stop age</b> ends
@@ -380,7 +401,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23i</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23j</span>
 </footer>
 
 <script>
@@ -403,7 +424,7 @@ const state = {
   spouseAge: 0,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true, tiltPct: 0,
-  curveOn: false,
+  curveOn: false, spendOn: false, spendYMin: 60, spendYMax: 150,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false,
@@ -433,6 +454,14 @@ const aPV = (r, k) => k <= 0 ? 0 : (r === 0 ? k : (1 - Math.pow(1 + r, -k)) / r)
    state applies on release. */
 let rateCurve = {};
 let curveShift = 0;
+/* ---- variable spending curve ---- */
+/* spendCurve maps year-end AGE -> drawn retirement spending as a percent of
+   first-year retirement spending. Sparse: undrawn years follow the tilt (or
+   flat) shape; values left of the retirement marker are stored but inactive.
+   The first retirement year is pinned at 100 percent, so the headline
+   Retirement spending stat keeps meaning first-year spending. */
+let spendCurve = {};
+/* ---- end variable spending curve ---- */
 let layoutFreeze = false;
 /* ---- end variable rate curve ---- */
 function buildSchedule(A0, E, Rkink) {
@@ -479,6 +508,17 @@ function simulate() {
   const workSpend = state.salary * (1 - s);
   const infl = state.inflPct / 100;
   const g = state.tiltPct / 100;
+  /* ---- variable spending curve (engine) ----
+     weight of retirement year j (0-based). Drawn years override the tilt;
+     year 0 is always 1 so C stays first-year spending. */
+  const shapeW = (j, R_) => {
+    if (state.spendOn && j > 0) {
+      const v = spendCurve[R_ + 1 + j];
+      if (v !== undefined) return v / 100;
+    }
+    return Math.pow(1 + g, j);
+  };
+  /* ---- end variable spending curve (engine) ---- */
 
   /* Discount/growth tables indexed by whole years from the start age.
      disc[k] = PV today of $1 at age A0+k;  growth[k] = FV at A0+k of $1 today. */
@@ -541,9 +581,9 @@ function simulate() {
      C is still one linear division, so the solve stays exact. Spending in the
      year ending at age R+1+j is C*(1+g)^j. */
   const discR = discAt(R);                       // PV today of $1 at retirement
-  let unitPV = 0;                                // PV today of a unit tilted stream
+  let unitPV = 0;                                // PV today of a unit shaped stream
   for (let j = 0; j < nRet; j++)
-    unitPV += Math.pow(1 + g, j) * discAt(R + 1 + j);
+    unitPV += shapeW(j, R) * discAt(R + 1 + j);
   const pvLegacy = state.legacy * discAt(E);
   const C = unitPV > 0 ? (atRet * discR + pvInc - pvLegacy) / unitPV : 0;
 
@@ -579,7 +619,7 @@ function simulate() {
     while (sAge < E) {
       let unit = 0, incPV = 0, bestC = Infinity, bestF = sAge + 1;
       for (let f = sAge + 1; f <= E; f++) {
-        unit  += Math.pow(1 + g, f - R - 1) * discAt(f);
+        unit  += shapeW(f - R - 1, R) * discAt(f);
         incPV += partsAt(f).inc * discAt(f);
         const target = f === E ? state.legacy : 0;
         const c = (Bs * discAt(sAge) + incPV - target * discAt(f)) / unit;
@@ -598,7 +638,7 @@ function simulate() {
     const { p1, p2, s1, s2, i1, i2, inc } = partsAt(age);
     const pen = p1 + p2, ss = s1 + s2;
     const level = (!state.allowBorrow && segC[age] !== undefined) ? segC[age] : C;
-    const spendYr = level * Math.pow(1 + g, age - R - 1);
+    const spendYr = level * shapeW(age - R - 1, R);
     const wd = spendYr - inc;
     bal = bal * (1 + rk) - wd;
     if (bal < minBal) { minBal = bal; minAge = age; }
@@ -643,6 +683,15 @@ function levelGapAt(R) {
   const E = state.endAge;
   const infl = state.inflPct / 100;
   const g = state.tiltPct / 100;
+  /* ---- variable spending curve (engine) ---- */
+  const shapeW = j => {
+    if (state.spendOn && j > 0) {
+      const v = spendCurve[Math.round(R) + 1 + j];
+      if (v !== undefined) return v / 100;
+    }
+    return Math.pow(1 + g, j);
+  };
+  /* ---- end variable spending curve (engine) ---- */
 
   /* R may be non-integer (R* bisection). Build the schedule to E; index by
      years-from-A0, allowing fractional R for the retirement-phase sums. */
@@ -688,7 +737,7 @@ function levelGapAt(R) {
   const nR = E - R;
   const discR = discAt(R);
   let unitPV = 0;
-  for (let j = 0; j < Math.round(nR); j++) unitPV += Math.pow(1 + g, j) * discAt(R + 1 + j);
+  for (let j = 0; j < Math.round(nR); j++) unitPV += shapeW(j) * discAt(R + 1 + j);
   const pvLegacy = state.legacy * discAt(E);
   const C = unitPV > 0 ? (BR * discR + pvInc - pvLegacy) / unitPV : 0;
   return C - state.salary * (1 - s);
@@ -795,6 +844,10 @@ function clampVal(key, v) {
      floored at -20%. rateMid2 is excluded: its negative is the coupled
      sentinel. Money fields keep the non-negative fallthrough below. */
   if (["ratePct","rateEnd","rateMid"].includes(key)) return Math.max(v, -20);
+  if (key === "spendYMin")
+    return Math.min(Math.max(Math.round(v), 0), Math.min(state.spendYMax - 10, 240));
+  if (key === "spendYMax")
+    return Math.max(Math.min(Math.round(v), 250), Math.max(state.spendYMin + 10, 10));
   return Math.max(v, 0);
 }
 
@@ -813,8 +866,10 @@ function wireBox(key, box) {
     state[key] = v;
     /* write the clamped value back into the box directly: the change event
        fires while the box is still focused, so refreshInputs' focus guard
-       would skip it and leave a rejected raw value on screen */
-    e.target.value = isMoney ? fmtMoney(v) : v;
+       would skip it and leave a rejected raw value on screen. Stop fields
+       show their "end" placeholder immediately when cleared to 0. */
+    e.target.value = isMoney ? fmtMoney(v)
+      : (key.endsWith("Stop") && v === 0 ? "" : v);
     render();
     pushHistory();
   });
@@ -931,7 +986,7 @@ function buildInputs() {
       ((state.pen2Amt > 0 || state.ss2Amt > 0 || state.spouseAge > 0) ? " open" : "") + '>' +
       '<summary>Spouse</summary>' +
       '<div class="grid2">' +
-        numField("spouseAge", "Spouse\u2019s start age", 1, "same") +
+        numField("spouseAge", "Spouse\u2019s age now", 1, "same") +
         '<div></div>' +
       '</div>' +
       '<div class="grid-inc">' +
@@ -1108,6 +1163,15 @@ function buildInputs() {
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Adds a drawing strip under the chart. Drawn years override the rate ' +
         'settings above; undrawn years still follow them.</div>' +
+      '</details>' +
+      '<details class="adv sub"' + (state.spendOn ? " open" : "") + '>' +
+      '<summary>Variable spending curve</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-spendOn"> ' +
+        'Draw a per-year spending shape</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Adds a drawing strip under the chart. Drawn years set retirement ' +
+        'spending as a percentage of the first year; undrawn years follow ' +
+        'the tilt setting. The first year is pinned at 100%.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
@@ -2205,6 +2269,24 @@ function applyHash() {
         rateCurve[age] = (n - 100) / 5;
     }
   }
+  /* LAB: sc=<firstAge>.<codes>, two base-36 chars per year, percent 0..250 */
+  for (const pair of pairs) {
+    if (pair.slice(0, 3) !== "sc=") continue;
+    spendCurve = {};
+    const body = pair.slice(3);
+    const dot = body.indexOf(".");
+    if (dot < 1) continue;
+    let age = Number(body.slice(0, dot));
+    if (!Number.isFinite(age)) continue;
+    const codes = body.slice(dot + 1);
+    for (let i = 0; i + 1 < codes.length; i += 2) {
+      age++;
+      const cc = codes.slice(i, i + 2);
+      if (cc === "--") continue;
+      const n = parseInt(cc, 36);
+      if (Number.isFinite(n) && n >= 0 && n <= 250) spendCurve[age] = n;
+    }
+  }
 }
 function scenarioLink() {
   const parts = Object.keys(state).map(k => {
@@ -2224,6 +2306,17 @@ function scenarioLink() {
             .toString(36).padStart(2, "0");
     }
     parts.push("rc=" + a0 + "." + codes);
+  }
+  const sAges = Object.keys(spendCurve).map(Number).sort((a, b) => a - b);
+  if (sAges.length) {
+    const a0 = sAges[0] - 1, a1 = sAges[sAges.length - 1];
+    let codes = "";
+    for (let a = a0 + 1; a <= a1; a++) {
+      const v = spendCurve[a];
+      codes += v === undefined ? "--"
+        : Math.min(250, Math.max(0, Math.round(v))).toString(36).padStart(2, "0");
+    }
+    parts.push("sc=" + a0 + "." + codes);
   }
   return location.href.split("#")[0] + "#" + parts.join("&");
 }
@@ -2340,6 +2433,150 @@ function paintAt(age, val) {
   const baseRender = render;
   render = function () { baseRender(); renderCurveStrip(); };
 }
+/* ---- variable spending curve: strip renderer and painting ---- */
+const SPEND = { W: 800, H: 192, L: 44, R: 10, T: 10, B: 22 };
+function spendGeom() {
+  /* full span, age now to end age: the same x-mapping as the rate strip, so
+     the strips align age-for-age and the drawing stands still while the
+     retirement marker moves over it (the age-anchor decision, drawn) */
+  const A0 = state.startAge, R0 = state.retAge;
+  const E = Math.max(state.endAge, A0 + 1);
+  const yMin = state.spendYMin, yMax = state.spendYMax;
+  const x = a => SPEND.L + (a - A0) / (E - A0) * (SPEND.W - SPEND.L - SPEND.R);
+  const y = v => SPEND.T + (yMax - Math.max(yMin, Math.min(yMax, v)))
+                 / (yMax - yMin) * (SPEND.H - SPEND.T - SPEND.B);
+  return { A0, R0, E, x, y, yMin, yMax };
+}
+function renderSpendStrip() {
+  const card = document.getElementById("spendCard");
+  if (card) card.style.display = state.spendOn ? "" : "none";
+  const svg = document.getElementById("spendStrip");
+  if (!svg || !state.spendOn) return;
+  const g = spendGeom();
+  const tilt = state.tiltPct / 100;
+  const n = g.E - g.R0;                 // retirement years only
+  let out = "";
+  /* gridline step targets about eight lines across whatever window is set */
+  const range = g.yMax - g.yMin;
+  let step = 50;
+  for (const cand of [5, 10, 20, 25, 50])
+    if (Math.abs(range / cand - 8) < Math.abs(range / step - 8)) step = cand;
+  for (let v = Math.ceil(g.yMin / step) * step; v <= g.yMax; v += step) {
+    const yy = g.y(v);
+    out += '<line x1="' + SPEND.L + '" x2="' + (SPEND.W - SPEND.R) +
+      '" y1="' + yy + '" y2="' + yy + '" stroke="#E3E6EA"' +
+      (v === 100 ? ' stroke-dasharray="4 3" stroke="#C8CCD2"' : '') + '/>' +
+      '<text x="' + (SPEND.L - 6) + '" y="' + (yy + 3.5) +
+      '" font-size="10" text-anchor="end" fill="#6B7280">' + v + '%</text>';
+  }
+  for (let a = Math.ceil(g.A0 / 10) * 10; a <= g.E; a += 10)
+    out += '<text x="' + g.x(a) + '" y="' + (SPEND.H - 6) +
+      '" font-size="10" text-anchor="middle" fill="#6B7280">' + a + '</text>';
+  /* retirement marker: values to its left are stored but inactive */
+  out += '<line x1="' + g.x(g.R0) + '" x2="' + g.x(g.R0) +
+    '" y1="' + SPEND.T + '" y2="' + (SPEND.H - SPEND.B) +
+    '" stroke="#6B7280" stroke-dasharray="3 3" opacity="0.6"/>';
+  /* inactive stored values (at or left of the pinned first year): dashed
+     gray, waiting for the retirement age to reach them. This is the same
+     rule that used to be the pin-shadow special case, generalized. */
+  for (let a = g.A0 + 1; a <= Math.min(g.R0 + 1, g.E); a++) {
+    if (spendCurve[a] === undefined) continue;
+    const sy = g.y(spendCurve[a]);
+    out += '<line x1="' + g.x(a - 1) + '" x2="' + g.x(a) +
+      '" y1="' + sy + '" y2="' + sy +
+      '" stroke-width="2" stroke="#B9BEC6" stroke-dasharray="2 3" opacity="0.8"/>';
+  }
+  for (let k = 1; k <= n; k++) {
+    const age = g.R0 + k;
+    const drawn = k > 1 && spendCurve[age] !== undefined;
+    const v = drawn ? spendCurve[age] : 100 * Math.pow(1 + tilt, k - 1);
+    const yy = g.y(v);   // pinned to the window edge when out of range
+    out += '<line x1="' + g.x(age - 1) + '" x2="' + g.x(age) +
+      '" y1="' + yy + '" y2="' + yy + '" stroke-width="3" stroke="' +
+      (k === 1 ? "#6B7280" : drawn ? "#374151" : "#B9BEC6") + '"/>';
+  }
+  svg.innerHTML = out;
+  const box = document.getElementById("v-spendOn");
+  if (box) box.checked = !!state.spendOn;
+  const bMin = document.getElementById("v-spendYMin"),
+        bMax = document.getElementById("v-spendYMax");
+  if (bMin && document.activeElement !== bMin) bMin.value = g.yMin;
+  if (bMax && document.activeElement !== bMax) bMax.value = g.yMax;
+}
+function spendPaintAt(age, val) {
+  if (!state.spendOn) return;
+  const g = spendGeom();
+  if (age <= g.A0 || age > g.E) return;   // anywhere in the span; activity
+                                          // is derived from the marker
+  spendCurve[age] = Math.round(Math.max(g.yMin, Math.min(g.yMax, val)));
+}
+{
+  const svg = document.getElementById("spendStrip");
+  let painting = false, lastA = null, lastV = null;
+  const toAgeVal = ev => {
+    const r = svg.getBoundingClientRect();
+    const g = spendGeom();
+    const px = (ev.clientX - r.left) / r.width * SPEND.W;
+    const py = (ev.clientY - r.top) / r.height * SPEND.H;
+    const age = Math.round(g.A0 + (px - SPEND.L) /
+      (SPEND.W - SPEND.L - SPEND.R) * (g.E - g.A0));
+    const val = g.yMax - (py - SPEND.T) /
+      (SPEND.H - SPEND.T - SPEND.B) * (g.yMax - g.yMin);
+    return { age, val };
+  };
+  const paintSpan = (a1, v1, a2, v2) => {
+    if (a1 === null || a1 === a2) { spendPaintAt(a2, v2); return; }
+    const step = a2 > a1 ? 1 : -1;
+    for (let a = a1; a !== a2 + step; a += step)
+      spendPaintAt(a, v1 + (v2 - v1) * (a - a1) / (a2 - a1));
+  };
+  svg.addEventListener("pointerdown", ev => {
+    painting = true; layoutFreeze = true;
+    if (svg.setPointerCapture) try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+    const p = toAgeVal(ev);
+    spendPaintAt(p.age, p.val); lastA = p.age; lastV = p.val;
+    render(); ev.preventDefault();
+  });
+  svg.addEventListener("pointermove", ev => {
+    if (!painting) return;
+    const p = toAgeVal(ev);
+    paintSpan(lastA, lastV, p.age, p.val);
+    lastA = p.age; lastV = p.val;
+    render(); ev.preventDefault();
+  });
+  const stop = () => {
+    if (!painting) return;
+    painting = false; lastA = lastV = null;
+    layoutFreeze = false;
+    render();
+    pushHistory();
+  };
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+  document.addEventListener("change", e => {
+    if (e.target && e.target.id === "v-spendOn") {
+      state.spendOn = e.target.checked; render(); pushHistory();
+    }
+  });
+  document.getElementById("spendReset").addEventListener("click", () => {
+    spendCurve = {}; render(); pushHistory();
+  });
+  document.addEventListener("change", e => {
+    if (!e.target) return;
+    if (e.target.id === "v-spendYMin" || e.target.id === "v-spendYMax") {
+      const key = e.target.id === "v-spendYMin" ? "spendYMin" : "spendYMax";
+      const c = clampVal(key, Number(e.target.value));
+      if (c !== null) state[key] = c;
+      render(); pushHistory();
+    }
+  });
+
+}
+{ /* every render also refreshes the spending strip */
+  const baseRender2 = render;
+  render = function () { baseRender2(); renderSpendStrip(); };
+}
+/* ---- end variable spending curve (ui) ---- */
 /* ---- end variable rate curve ---- */
 applyHash();
 ratchetNote = "";
