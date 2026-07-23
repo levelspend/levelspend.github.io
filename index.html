@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.22x -->
+<!-- LevelSpend build 2026.07.23f -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -118,6 +118,11 @@
                  0 0 0 9px rgba(28,36,51,0.16); }
     }
   }
+  /* retired state (retirement age at or before age now): inapplicable
+     working-side controls stay visible but gray; the buttons reuse the
+     existing disabled dimming, the salary row uses this class */
+  .field.inert { opacity:.45; }
+  .field.inert .lbl { cursor:default; }
   .solve-val { display:block; font-weight:400; font-size:11px; opacity:.92;
                font-variant-numeric:tabular-nums; margin-top:2px; }
   /* stats */
@@ -205,7 +210,9 @@
     <button class="mast-btn" id="clearBtn"
       title="Zero all dollar amounts so you can enter your own numbers">clear</button>
     <button class="mast-btn" id="resetBtn"
-      title="Restore the example defaults">default example</button>
+      title="Load the working example numbers">working example</button>
+    <button class="mast-btn" id="retiredBtn"
+      title="Load the retired example numbers">retired example</button>
   </span>
 </div>
 <div class="cols">
@@ -247,7 +254,8 @@
         <div class="head">If you are still working</div>
         <ol>
           <li>Enter your age now, planning end age (an age you are unlikely to
-              outlive), and salary; then your starting portfolio and any
+              outlive), and salary (your household’s total, all earners together); then
+              your starting portfolio and any
               legacy: the amount, in today's dollars, you want left over
               at the end age for heirs or bequests. Enter 0 to spend everything.</li>
           <li>Enter any Social Security and pension amounts in today's dollars,
@@ -349,16 +357,24 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22x</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23f</span>
 </footer>
 
 <script>
 "use strict";
 
+/* Working example: 35 years old, household salary 75k, 50k saved, saving
+   15%, aiming at 57. The ambitious target is deliberate: it keeps the
+   solved retirement age well below every income start age (no clamp notes,
+   the full staircase intact), and it lets the two solve buttons answer two
+   different questions: what retiring at 57 costs (savings solve, about
+   24%) and when 15% gets there (retirement solve, 62, three years before
+   the pension). Deliberately NOT close to solved, so both buttons have
+   visible work to do on first load. */
 const state = {
-  startBal: 150000, salary: 80000, savePct: 15, ratePct: 4,
-  startAge: 55, retAge: 65, endAge: 95,
-  penAmt: 15000, penAge: 67, penStop: 0, ssAmt: 30000, ssAge: 70, ssStop: 0,
+  startBal: 50000, salary: 75000, savePct: 15, ratePct: 4,
+  startAge: 35, retAge: 57, endAge: 95,
+  penAmt: 12000, penAge: 65, penStop: 0, ssAmt: 24000, ssAge: 70, ssStop: 0,
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   inc1Amt: 0, inc1Age: 67, inc1Stop: 0, inc2Amt: 0, inc2Age: 67, inc2Stop: 0,
   spouseAge: 0,
@@ -656,8 +672,13 @@ function fvContribTo(growth, idx, A0, R) {
 function solveRStar() {
   for (let R = state.startAge; R <= state.endAge - 1; R++)
     if (levelGapAt(R) >= -1e-6) {
-      if (R === state.startAge || levelGapAt(R) <= 1e-6) return R;
-      return R - 1;
+      if (R === state.startAge) return R;
+      /* integer ages cannot hit level exactly, so return whichever side of
+         the crossing is closer to level (smaller absolute gap), even when
+         that side leaves retirement spending slightly above working
+         spending; ties go to the earlier age */
+      return Math.abs(levelGapAt(R - 1)) <= Math.abs(levelGapAt(R))
+        ? R - 1 : R;
     }
   return null;
 }
@@ -1245,14 +1266,39 @@ function refreshInputs(m) {
       : Math.abs(state.savePct - sTarget) < 0.05 ? "spending is level"
       : "setting savings: " + (m.sStar * 100).toFixed(1) + "%";
   }
-  const Rs = solveRStar();
+  /* already retired (retirement age at or before age now): both solve
+     buttons and the salary row are inapplicable, so they gray in place;
+     everything un-grays the moment the retire line moves past age now */
+  const rBtn = document.getElementById("setRStar");
   let rTxt;
-  if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
-  else if (clampVal("retAge", Rs) === state.retAge) rTxt = "spending is level";
-  else {
-    rTxt = "setting retirement: " + Rs;
+  if (m.nWork === 0) {
+    rTxt = "n/a (already retired)";
+    rBtn.disabled = true; rBtn.style.opacity = "0.5"; rBtn.style.cursor = "default";
+  } else {
+    rBtn.disabled = false; rBtn.style.opacity = ""; rBtn.style.cursor = "pointer";
+    const Rs = solveRStar();
+    if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
+    else if (clampVal("retAge", Rs) === state.retAge) {
+      /* pressing would not move the retirement age. If spending is truly
+         level at this age (for example after the savings-rate solve trues
+         it up), say so plainly; otherwise the integer age is only the
+         closest approximation. The tolerance is a sub-pixel gap: $100 or
+         0.1% of working spending, whichever is larger. */
+      const lvlEps = Math.max(100, 0.001 * Math.abs(m.workSpend));
+      rTxt = Math.abs(levelGapAt(state.retAge)) <= lvlEps
+        ? "spending is level" : "spending is roughly level";
+    }
+    else {
+      rTxt = "setting retirement: " + Rs;
+    }
   }
   document.getElementById("rStar").textContent = rTxt;
+  const salBox = document.getElementById("v-salary");
+  if (salBox) {
+    salBox.disabled = m.nWork === 0;
+    const salField = salBox.closest(".field");
+    if (salField) salField.classList.toggle("inert", m.nWork === 0);
+  }
 }
 
 /* ---------------- stats ---------------- */
@@ -2030,20 +2076,39 @@ window.addEventListener("popstate", e => {
    sent to any server (fragments stay in the browser), so "nothing you type is
    sent anywhere" remains true; a link only exists if the user copies it. */
 const DEFAULTS = JSON.parse(JSON.stringify(state));
+/* Retired example: the second door. Retired at 62 with a round portfolio,
+   a pension arriving at 65 and Social Security delayed to 70: three phases
+   (portfolio alone, portfolio plus pension, all three streams) under one
+   level spending line, with the withdrawal stepping down as each stream
+   starts. The income keys are pinned here so this example stands on its
+   own; the rates, COLAs, and other settings inherit from the working
+   example. Spouse and Advanced fields stay at their defaults, so every
+   drawer loads closed. */
+const RETIRED = Object.assign(JSON.parse(JSON.stringify(state)), {
+  startAge: 62, retAge: 62, salary: 0, savePct: 0, startBal: 1000000,
+  penAmt: 10000, penAge: 65, ssAmt: 30000, ssAge: 70,
+});
 /* Example marker: the muted "Example numbers" line above the inputs shows
-   only while the state is exactly the default example. A scenario link is
-   someone's real numbers, so a hash present at load suppresses the marker
-   even if those numbers happen to equal the defaults; the "default example"
-   button restores eligibility along with the example itself. */
+   only while the state is exactly one of the two examples. A scenario link
+   is someone's real numbers, so a hash present at load suppresses the marker
+   even if those numbers happen to equal an example; the "working example"
+   and "retired example" buttons restore eligibility along with the example
+   itself. */
 const DEFAULTS_JSON = JSON.stringify(DEFAULTS);
 /* the banner tolerates differences in the two Decision variables: solve
    presses, the retire-line drag, and hand-set retAge/savePct leave every
    other number an example number, so the label stays true and stays up */
 const DEC_KEYS = ["retAge", "savePct"];
+const EXAMPLES = [DEFAULTS, RETIRED];
 function exampleLike() {
-  const a = Object.assign({}, state), b = Object.assign({}, DEFAULTS);
-  for (const k of DEC_KEYS) { delete a[k]; delete b[k]; }
-  return JSON.stringify(a) === JSON.stringify(b);
+  const a = Object.assign({}, state);
+  for (const k of DEC_KEYS) delete a[k];
+  const aj = JSON.stringify(a);
+  return EXAMPLES.some(ex => {
+    const b = Object.assign({}, ex);
+    for (const k of DEC_KEYS) delete b[k];
+    return JSON.stringify(b) === aj;
+  });
 }
 let exampleEligible = !(location.hash && location.hash.length >= 2);
 function applyHash() {
@@ -2082,7 +2147,7 @@ render();
 if (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON) {
   for (const id of ["setRStar", "setSStar"]) {
     const b = document.getElementById(id);
-    if (b) b.classList.add("solve-cue");
+    if (b && !b.disabled) b.classList.add("solve-cue");
   }
 }
 function applyPreset(obj, btn, flashText) {
@@ -2100,17 +2165,24 @@ document.getElementById("resetBtn").addEventListener("click", e => {
   exampleEligible = true;
   applyPreset(DEFAULTS, e.target, "restored");
 });
+document.getElementById("retiredBtn").addEventListener("click", e => {
+  exampleEligible = true;
+  applyPreset(RETIRED, e.target, "loaded");
+});
 document.getElementById("clearBtn").addEventListener("click", e => {
   /* zero the dollars IN PLACE: ages, rates, spouse timeline, and Advanced
      settings are the user's own facts and survive a clear. The canonical
-     slate is the "default example" button's job, not this one's. */
+     slate is the example buttons' job, not this one's. */
   const blank = JSON.parse(JSON.stringify(state));
   for (const k of ["startBal","salary","savePct","penAmt","ssAmt",
                    "pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"])
     blank[k] = 0;
   applyPreset(blank, e.target, "cleared");
+  /* salary is grayed when already retired; land on the portfolio instead */
   const first = document.getElementById("v-salary");
-  if (first) { first.focus(); }   // focus handler selects content
+  const tgt = first && !first.disabled
+    ? first : document.getElementById("v-startBal");
+  if (tgt) { tgt.focus(); }   // focus handler selects content
 });
 document.getElementById("shareBtn").addEventListener("click", async () => {
   const link = scenarioLink();
