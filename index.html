@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.23f -->
+<!-- LevelSpend build 2026.07.23g -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -253,91 +253,101 @@
       <div>
         <div class="head">If you are still working</div>
         <ol>
-          <li>Enter your age now, planning end age (an age you are unlikely to
-              outlive), and salary (your household’s total, all earners together); then
-              your starting portfolio and any
-              legacy: the amount, in today's dollars, you want left over
-              at the end age for heirs or bequests. Enter 0 to spend everything.</li>
-          <li>Enter any Social Security and pension amounts in today's dollars,
-              with the ages they begin. Enter 0 if none. A spouse's benefits go under <b>Spouse</b>; with the
-              spouse's start age entered there, their benefit ages are the
-              spouse's own ages. Two more streams on your own timeline are
-              under <b>More income</b> in <b>Advanced</b>. Each stream can also be given a stop age if it ends
-              before the end age; leave it blank to run to the end. Stop ages can
-              represent benefits ending at an expected death, such as a pension
-              without survivor benefits or the smaller of a couple's two Social
-              Security checks. Spending itself stays level to the end age. If a
-              pension pays a fixed amount with no inflation adjustment, see
-              <b>Advanced</b> at the bottom of the panel.</li>
-          <li>Set the expected long-run <b>portfolio growth rate</b>. This is a
-              real (after-inflation) return: real returns have historically ranged
-              from roughly 2% to 7% depending on the era and starting valuations.
-              No one knows this rate in advance; try several values and see how
-              much the results move.</li>
-          <li>Under <b>Decision variables</b>, enter the retirement age you have in
-              mind and the share of salary you currently save.</li>
-          <li>Read the chart and stats: if spending is level (the
-              spending line runs unbroken across the retirement age) and the
-              portfolio lasts to the end age, the plan is internally consistent.
-              If not, either
-              click <b>solve</b> next to retirement age (latest age at which
-              retirement spending stays at or below your working level) or
-              <b>solve</b> next to savings rate (rate that
-              makes your chosen retirement age work). Hover or tap any year on
-              the chart for that year's detail: income, spending, and the
-              portfolio withdrawal or contribution.</li>
-          <li>Revisit once a year, or after any major change in your finances:
-              update your age, portfolio value, and any other inputs that have
-              changed (salary, Social Security estimate, pension), and re-check.
-              The plan is meant to be recalculated, not set once. To avoid
-              re-typing, <b>copy scenario link</b> (top right) makes a
-              bookmarkable link containing your inputs; nothing is stored
+          <li>Enter your <b>age now</b>, planning <b>end age</b> (an age you
+              are unlikely to outlive), and <b>salary</b> (your household's
+              total); then your <b>starting portfolio</b> and any
+              <b>legacy</b> you want left at the end age, in today's dollars.
+              Enter 0 to spend everything.</li>
+          <li>Enter <b>Social Security</b> and <b>pension</b> in today's
+              dollars, with the ages they begin. Enter 0 if none. A spouse's
+              benefits go under <b>Spouse</b>; with the spouse's <b>start
+              age</b> entered there, their benefit ages are the spouse's own.
+              Two more retirement income streams on your own timeline are
+              under <b>More income</b> in <b>Advanced</b>. A <b>stop age</b>
+              ends a stream early, such as a pension without survivor
+              benefits or the smaller of a couple's two Social Security
+              checks; leave it blank to run to the end age. For a pension
+              with no inflation adjustment, see <b>Advanced</b>.</li>
+          <li>Set the expected long-run <b>portfolio growth rate</b>. This is
+              a real (after-inflation) return: historically roughly 2% to 7%
+              depending on the era and starting valuations. No one knows this
+              rate in advance; try several values and see how much the
+              results move. <b>Rate sensitivity</b>, under <b>Advanced</b>,
+              draws the cost of guessing 1% wrong directly on the chart.</li>
+          <li>Under <b>Decision variables</b>, enter the <b>retirement
+              age</b> you have in mind and your <b>savings rate</b>, the
+              share of salary you currently save.</li>
+          <li>Read the chart and stats. Spending is level when working
+              spending and retirement spending match, with no step at the
+              retirement age. If there is a step, press either <b>solve</b>
+              button: one finds the retirement age at which spending comes
+              closest to level at your savings rate, the other finds the
+              savings rate that levels spending at your chosen retirement
+              age. Hover or tap any year on the chart for that year's
+              detail.</li>
+          <li>Revisit once a year, or after any major change in your
+              finances: update your <b>age now</b>, <b>starting
+              portfolio</b>, and anything else that has changed, then press
+              <b>solve</b> next to <b>savings rate</b> again: the updated
+              rate is your savings target for the year ahead. Or re-solve
+              <b>retirement age</b> and watch your feasible date move.
+              <b>copy scenario link</b> (top right) makes a bookmarkable
+              link containing your inputs; nothing is stored
               otherwise.</li>
         </ol>
       </div>
       <div>
         <div class="head">If you are already retired</div>
         <ol>
-          <li>Set <b>retirement age equal to age now</b>, salary to 0, and
-              savings rate to 0. The working-phase inputs become irrelevant.</li>
-          <li>Enter your age now, planning end age, portfolio value, and any
-              legacy (the amount you want left over at the end age).</li>
-          <li>Enter Social Security and pension in today's dollars with their start
-              ages, including benefits you have not claimed yet. For a benefit
-              that has already started, enter your age now as its start age
-              (any earlier age gives the same result; the tool pays no income
-              before the retirement age, which in this setup is your age now). A spouse's benefits go under <b>Spouse</b>, with ages on
-              the spouse's own timeline once their start age is entered. Two
-              more streams on your own timeline are under <b>More income</b>
-              in <b>Advanced</b>.
-              A stop age ends a stream early; leave it blank to run to the end
+          <li>Press <b>retired example</b> (top right) and replace its
+              numbers with yours, or set <b>retirement age</b> equal to your
+              <b>age now</b>. Either way, the working-side inputs
+              (<b>salary</b>, <b>savings rate</b>, and both <b>solve</b>
+              buttons) gray out: with no working years they no longer
+              apply.</li>
+          <li>Enter your <b>age now</b>, planning <b>end age</b> (an age you
+              are unlikely to outlive), <b>starting portfolio</b>, and any
+              <b>legacy</b> you want left at the end age, in today's
+              dollars.</li>
+          <li>Enter <b>Social Security</b> and <b>pension</b> in today's
+              dollars with their start ages. For a benefit already being
+              paid, enter your <b>age now</b> as its <b>start age</b>; any
+              earlier age gives the same result. A spouse's benefits go
+              under <b>Spouse</b>; with the spouse's <b>start age</b>
+              entered there, their benefit ages are the spouse's own. Two
+              more retirement income streams on your own timeline are under
+              <b>More income</b> in <b>Advanced</b>. A <b>stop age</b> ends
+              a stream early; leave it blank to run to the end age.</li>
+          <li>Set the <b>portfolio growth rate</b> as in step 3
+              opposite.</li>
+          <li>Read <b>Retirement spending</b> in the stats row: the level
+              annual amount, in today's dollars and before tax, that your
+              portfolio plus future income can sustain through the end
               age.</li>
-          <li>Set the portfolio growth rate as in step 3 opposite.</li>
-          <li>Read <b>Retirement spending</b> in the stats row: the level annual
-              amount (today's dollars, before tax) your portfolio plus future income
-              can sustain through the end age.</li>
-          <li>Each year, or after any major change in your finances, refresh all
-              the inputs: age, portfolio value, and income estimates. The updated
+          <li>Revisit once a year, or after any major change in your
+              finances: update your <b>age now</b>, <b>starting
+              portfolio</b>, and anything else that has changed. The updated
               <b>Retirement spending</b> is your spending level for the year
               ahead.</li>
         </ol>
         <div class="head">If you are semi-retired</div>
         <ol>
-          <li>The test: does your paycheck decide your spending, or do you decide
-              your spending and draw on savings as needed? If the second, use
-              this setup even though paychecks are still arriving.</li>
-          <li>Follow the already-retired setup above: retirement age equal to
-              age now, salary 0, savings rate 0.</li>
-          <li>Enter your remaining salary as a pension slot (or an Other income
-              slot under <b>Advanced</b>): amount per year,
-              start age now, stop age at your last working year. Leave its
-              inflation-adjusted box under <b>Advanced</b> checked (the
+          <li>For this tool, you are semi-retired if you are still working,
+              spending your whole paycheck, and covering the rest of your
+              spending from the portfolio.</li>
+          <li>Follow the already-retired setup above: <b>retirement age</b>
+              equal to your <b>age now</b>.</li>
+          <li>Enter your remaining salary in a <b>pension</b> slot, or an
+              <b>Other income</b> slot under <b>More income</b> in
+              <b>Advanced</b>: the amount per year, <b>start age</b> at your
+              age now, <b>stop age</b> at your last working year. Leave its
+              inflation-adjusted box, under <b>Advanced</b>, checked (the
               default). To the tool, a paycheck for a few more years is just
               another income stream.</li>
-          <li>The tool computes one level spending amount across both phases. In
-              years when the paycheck falls short of it, the difference is a
-              portfolio withdrawal; nothing extra to enter. Hover or tap the
-              chart to see it year by year.</li>
+          <li>The tool computes one level spending amount across both
+              phases. In years when the paycheck falls short of it, the
+              difference is a portfolio withdrawal; nothing extra to enter.
+              Hover or tap the chart to see it year by year.</li>
         </ol>
       </div>
     </div>
@@ -357,7 +367,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23f</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23g</span>
 </footer>
 
 <script>
