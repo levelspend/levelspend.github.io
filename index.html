@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.23h -->
+<!-- LevelSpend build 2026.07.23i -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -241,6 +241,19 @@
         Level when s = s* = (1 - (B0*G + PV_inc - L*(1+r)^-m)*A/salary)/(1 + F*A).
       -->
     </div>
+    <div class="card" id="curveCard" style="padding:12px 16px 10px; margin-top:12px; display:none;">
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px;">
+        <button class="mast-btn" id="curveReset" type="button">reset curve</button>
+        <span id="curveMean" style="color:var(--ink-soft);"></span>
+      </div>
+      <svg id="curveStrip" width="100%" viewBox="0 0 800 200"
+           style="display:block; margin-top:6px; touch-action:none; cursor:crosshair;"></svg>
+      <div style="font-size:11px; color:var(--ink-soft); line-height:1.45;">
+        Draw with the mouse: each year's real return, in percent. Undrawn years
+        follow the rate settings on the left; drawn years override them. The
+        chart above recomputes as you draw.
+      </div>
+    </div>
   </div>
 
 </div>
@@ -367,7 +380,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23h</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.23i</span>
 </footer>
 
 <script>
@@ -390,6 +403,7 @@ const state = {
   spouseAge: 0,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true, tiltPct: 0,
+  curveOn: false,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false,
@@ -408,10 +422,27 @@ const aPV = (r, k) => k <= 0 ? 0 : (r === 0 ? k : (1 - Math.pow(1 + r, -k)) / r)
    through these, so a varying schedule stays exact with no solver: the geometric
    shortcuts (annuityFactor, fvFactor) are just the special case of a flat
    schedule. */
+/* ---- variable rate curve ---- */
+/* rateCurve maps year-end AGE -> drawn real rate in percent. Sparse on
+   purpose: undrawn years fall back to the parametric schedule (constant or
+   glide), so a partial drawing is a local stress test, not a full
+   commitment. curveShift lets the rate-sensitivity companions shift drawn
+   years along with everything else. layoutFreeze: while any chart or strip
+   drag is active, layout-affecting toggles (the feasibility warning) are
+   frozen so nothing can move the canvas under an active pointer; deferred
+   state applies on release. */
+let rateCurve = {};
+let curveShift = 0;
+let layoutFreeze = false;
+/* ---- end variable rate curve ---- */
 function buildSchedule(A0, E, Rkink) {
   const r0 = state.ratePct / 100;
   const n = E - A0;
   const rateForYearEnding = k => {   // k = 1..n, the year ending at age A0+k
+    if (state.curveOn) {
+      const v = rateCurve[A0 + k];
+      if (v !== undefined) return (v + curveShift) / 100;
+    }
     if (!state.glide || n <= 0) return r0;
     const r1 = state.rateEnd / 100;
     const aMid = A0 + k - 0.5;       // rate evaluated at the midpoint of the year
@@ -1070,6 +1101,14 @@ function buildInputs() {
         'would support if the growth rate were one point lower or one point ' +
         'higher. Spending absorbs the difference; nothing else changes.</div>' +
       '</details>' +
+      '<details class="adv sub"' + (state.curveOn ? " open" : "") + '>' +
+      '<summary>Variable rate curve</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-curveOn"> ' +
+        'Draw a per-year return schedule</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Adds a drawing strip under the chart. Drawn years override the rate ' +
+        'settings above; undrawn years still follow them.</div>' +
+      '</details>' +
       '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-allowBorrow"> ' +
@@ -1388,10 +1427,11 @@ function renderChart(m) {
       for (const k of RK)
         state[k] = (k === "rateMid2" && saved.rateMid2 === -1)
           ? -1 : saved[k] + dv;
+      curveShift = dv;               // drawn years shift with the rest
       return simulate();
     };
     try { envLo = shifted(-1); envHi = shifted(1); }
-    finally { for (const k of RK) state[k] = saved[k]; }
+    finally { for (const k of RK) state[k] = saved[k]; curveShift = 0; }
   }
   lastEnv = state.envOn && envLo && envHi
     ? { lo: envLo.rows, hi: envHi.rows } : null;
@@ -1778,10 +1818,10 @@ function attachRateDrag() {
     if (t.classList.contains("rate-handle")) {
       e.preventDefault();
       dragKey = t.getAttribute("data-key");
-      dragMode = "rate";
+      dragMode = "rate"; layoutFreeze = true;
     } else if (t.classList.contains("ret-handle")) {
       e.preventDefault();
-      dragMode = "ret";
+      dragMode = "ret"; layoutFreeze = true;
     } else if (t.classList.contains("band-h")) {
       e.preventDefault();
       const st = STREAMS[t.getAttribute("data-stream")];
@@ -1793,7 +1833,7 @@ function attachRateDrag() {
       const row = lastRows.find(d => d.age === grabAge && d.phase === "retired")
                || lastRows.filter(d => d.phase === "retired")[0];
       if (!row) return;
-      dragMode = "amt";
+      dragMode = "amt"; layoutFreeze = true;
       dragMeta = {
         st,
         below: st.below(row),
@@ -1878,7 +1918,12 @@ function attachRateDrag() {
     render();
   });
   window.addEventListener("pointerup", () => {
-    if (dragMode) { dragKey = null; dragMode = null; dragMeta = null; pushHistory(); }
+    if (dragMode) {
+      dragKey = null; dragMode = null; dragMeta = null;
+      layoutFreeze = false;
+      render();               // apply any warning state deferred during the drag
+      pushHistory();
+    }
   });
 }
 
@@ -1995,7 +2040,9 @@ function render() {
   });
 
   const warn = document.getElementById("feasWarn");
-  if (!m.feasible) {
+  if (layoutFreeze) {
+    /* a drag is active: leave the warning exactly as it is */
+  } else if (!m.feasible) {
     /* enriched diagnosis: how much the level plan implicitly borrows (at the
        growth rate, the model's only price), and roughly how much more money
        today would make it feasible */
@@ -2137,14 +2184,163 @@ function applyHash() {
       if (c !== null) state[k] = c;
     }
   }
+  /* rc=<firstAge>.<codes> restores a drawn curve: two base-36 characters per
+     year starting the year after firstAge; "--" is an undrawn gap.
+     code = (rate + 20) / 0.2, exact at the 0.2% drawing quantum. */
+  for (const pair of pairs) {
+    if (pair.slice(0, 3) !== "rc=") continue;
+    rateCurve = {};
+    const body = pair.slice(3);
+    const dot = body.indexOf(".");
+    if (dot < 1) continue;
+    let age = Number(body.slice(0, dot));
+    if (!Number.isFinite(age)) continue;
+    const codes = body.slice(dot + 1);
+    for (let i = 0; i + 1 < codes.length; i += 2) {
+      age++;
+      const cc = codes.slice(i, i + 2);
+      if (cc === "--") continue;
+      const n = parseInt(cc, 36);
+      if (Number.isFinite(n) && n >= 0 && n <= 160)
+        rateCurve[age] = (n - 100) / 5;
+    }
+  }
 }
 function scenarioLink() {
   const parts = Object.keys(state).map(k => {
     const v = state[k];
     return k + "=" + (typeof v === "boolean" ? (v ? 1 : 0) : v);
   });
+  /* drawn curve, maximally compressed: bounded by the drawn span, at most
+     about 130 characters even for a fully drawn 60-year schedule */
+  const cAges = Object.keys(rateCurve).map(Number).sort((a, b) => a - b);
+  if (cAges.length) {
+    const a0 = cAges[0] - 1, a1 = cAges[cAges.length - 1];
+    let codes = "";
+    for (let a = a0 + 1; a <= a1; a++) {
+      const v = rateCurve[a];
+      codes += v === undefined ? "--"
+        : Math.min(160, Math.max(0, Math.round((v + 20) * 5)))
+            .toString(36).padStart(2, "0");
+    }
+    parts.push("rc=" + a0 + "." + codes);
+  }
   return location.href.split("#")[0] + "#" + parts.join("&");
 }
+/* ---- variable rate curve: strip renderer and painting ---- */
+const CURVE = { W: 800, H: 200, L: 44, R: 10, T: 10, B: 22, yMin: -20, yMax: 12 };
+function curveGeom() {
+  const A0 = state.startAge, E = Math.max(state.endAge, A0 + 1);
+  const x = a => CURVE.L + (a - A0) / (E - A0) * (CURVE.W - CURVE.L - CURVE.R);
+  const y = v => CURVE.T + (CURVE.yMax - v) / (CURVE.yMax - CURVE.yMin)
+                 * (CURVE.H - CURVE.T - CURVE.B);
+  return { A0, E, x, y };
+}
+function renderCurveStrip() {
+  const card = document.getElementById("curveCard");
+  if (card) card.style.display = state.curveOn ? "" : "none";
+  const svg = document.getElementById("curveStrip");
+  if (!svg || !state.curveOn) return;
+  const g = curveGeom();
+  const sched = buildSchedule(g.A0, g.E, state.retAge);
+  const n = g.E - g.A0;
+  let out = "";
+  for (const v of [-20, -15, -10, -5, 0, 5, 10]) {
+    const yy = g.y(v);
+    out += '<line x1="' + CURVE.L + '" x2="' + (CURVE.W - CURVE.R) +
+      '" y1="' + yy + '" y2="' + yy + '" stroke="#E3E6EA"' +
+      (v === 0 ? ' stroke-dasharray="4 3" stroke="#C8CCD2"' : '') + '/>' +
+      '<text x="' + (CURVE.L - 6) + '" y="' + (yy + 3.5) +
+      '" font-size="10" text-anchor="end" fill="#6B7280">' + v + '%</text>';
+  }
+  for (let a = Math.ceil(g.A0 / 10) * 10; a <= g.E; a += 10)
+    out += '<text x="' + g.x(a) + '" y="' + (CURVE.H - 6) +
+      '" font-size="10" text-anchor="middle" fill="#6B7280">' + a + '</text>';
+  out += '<line x1="' + g.x(state.retAge) + '" x2="' + g.x(state.retAge) +
+    '" y1="' + CURVE.T + '" y2="' + (CURVE.H - CURVE.B) +
+    '" stroke="#6B7280" stroke-dasharray="3 3" opacity="0.6"/>';
+  let sum = 0;
+  for (let k = 1; k <= n; k++) {
+    const age = g.A0 + k;
+    const drawn = rateCurve[age] !== undefined;
+    const v = sched.rateForYearEnding(k) * 100;
+    sum += v;
+    const yy = g.y(Math.max(CURVE.yMin, Math.min(CURVE.yMax, v)));
+    out += '<line x1="' + g.x(age - 1) + '" x2="' + g.x(age) +
+      '" y1="' + yy + '" y2="' + yy + '" stroke-width="3" stroke="' +
+      (drawn ? "#374151" : "#B9BEC6") + '"/>';
+  }
+  svg.innerHTML = out;
+  const mean = document.getElementById("curveMean");
+  if (mean) mean.textContent = n > 0
+    ? "effective mean " + (sum / n).toFixed(1) + "%/yr over " + n + " years"
+    : "";
+  const box = document.getElementById("v-curveOn");
+  if (box) box.checked = !!state.curveOn;
+}
+function paintAt(age, val) {
+  if (!state.curveOn) return;      // the Advanced checkbox is the one switch
+  const g = curveGeom();
+  if (age <= g.A0 || age > g.E) return;
+  rateCurve[age] = Math.round(Math.max(CURVE.yMin, Math.min(CURVE.yMax, val)) * 5) / 5;
+}
+{
+  const svg = document.getElementById("curveStrip");
+  let painting = false, lastA = null, lastV = null;
+  const toAgeVal = ev => {
+    const r = svg.getBoundingClientRect();
+    const g = curveGeom();
+    const px = (ev.clientX - r.left) / r.width * CURVE.W;
+    const py = (ev.clientY - r.top) / r.height * CURVE.H;
+    const age = Math.round(g.A0 + (px - CURVE.L) /
+      (CURVE.W - CURVE.L - CURVE.R) * (g.E - g.A0));
+    const val = CURVE.yMax - (py - CURVE.T) /
+      (CURVE.H - CURVE.T - CURVE.B) * (CURVE.yMax - CURVE.yMin);
+    return { age, val };
+  };
+  const paintSpan = (a1, v1, a2, v2) => {
+    if (a1 === null || a1 === a2) { paintAt(a2, v2); return; }
+    const step = a2 > a1 ? 1 : -1;
+    for (let a = a1; a !== a2 + step; a += step)
+      paintAt(a, v1 + (v2 - v1) * (a - a1) / (a2 - a1));
+  };
+  svg.addEventListener("pointerdown", ev => {
+    painting = true; layoutFreeze = true;
+    if (svg.setPointerCapture) try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+    const p = toAgeVal(ev);
+    paintAt(p.age, p.val); lastA = p.age; lastV = p.val;
+    render(); ev.preventDefault();
+  });
+  svg.addEventListener("pointermove", ev => {
+    if (!painting) return;
+    const p = toAgeVal(ev);
+    paintSpan(lastA, lastV, p.age, p.val);
+    lastA = p.age; lastV = p.val;
+    render(); ev.preventDefault();
+  });
+  const stop = () => {
+    if (!painting) return;
+    painting = false; lastA = lastV = null;
+    layoutFreeze = false;
+    render();               // apply any warning state deferred during the drag
+    pushHistory();
+  };
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+  document.addEventListener("change", e => {
+    if (e.target && e.target.id === "v-curveOn") {
+      state.curveOn = e.target.checked; render(); pushHistory();
+    }
+  });
+  document.getElementById("curveReset").addEventListener("click", () => {
+    rateCurve = {}; render(); pushHistory();
+  });
+}
+{ /* every render also refreshes the strip */
+  const baseRender = render;
+  render = function () { baseRender(); renderCurveStrip(); };
+}
+/* ---- end variable rate curve ---- */
 applyHash();
 ratchetNote = "";
 buildInputs();
