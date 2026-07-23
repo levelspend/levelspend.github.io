@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.22w -->
+<!-- LevelSpend build 2026.07.22x -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -349,7 +349,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22w</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.22x</span>
 </footer>
 
 <script>
@@ -1295,6 +1295,22 @@ function el(name, attrs, text) {
 }
 let geom = null, lastRows = null, lastEnv = null;
 
+/* Guaranteed-income band order: streams stack by first payment age
+   (earliest at the bottom), recomputed on every chart render and shared
+   with the drag handlers and the tooltip so all three stack identically.
+   BAND_SEM is the semantic (form field) order, used as the tiebreak. */
+const BAND_SEM = ["s1", "p1", "s2", "p2", "i1", "i2"];
+const BAND_LBL = { s1:"Social Security", p1:"pension", s2:"Social Security 2",
+                   p2:"pension 2", i1:"other income", i2:"other income 2" };
+const TIP_LBL  = { s1:"Social Security", p1:"Pension", s2:"Social Security 2",
+                   p2:"Pension 2", i1:"Other income", i2:"Other income 2" };
+let bandOrder = BAND_SEM.slice();
+const stackBelow = (id, d) => {
+  let s = 0;
+  for (const b of bandOrder) { if (b === id) break; s += (d[b] || 0); }
+  return s;
+};
+
 function renderChart(m) {
   const svg = document.getElementById("chart");
   const W = svg.clientWidth || 800;
@@ -1421,9 +1437,10 @@ function renderChart(m) {
   svg.appendChild(el("line", { x1:W-mR, x2:W-mR, y1:mT, y2:plotB,
     stroke:"#3D6B9E", "stroke-width":1 }));
 
-  /* stacked funding bands (retirement): Social Security on the bottom, pension
-     above it (mirroring the form's field order), then spouse benefits, other
-     income, and portfolio withdrawal on top; the stack sums to spending. */
+  /* stacked funding bands (retirement): guaranteed-income streams ordered by
+     first payment age, earliest on the bottom, so a stream is never displaced
+     by one that starts beneath it after it has begun; ties keep the form's
+     field order; portfolio withdrawal on top; the stack sums to spending. */
   const retRows = rows.filter(d => d.phase === "retired");
   if (retRows.length > 1) {
     const stepPts = f => {
@@ -1440,20 +1457,32 @@ function renderChart(m) {
       const d = "M" + pts.map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L") + " Z";
       svg.appendChild(el("path", { d, fill, "fill-opacity":op, stroke:"none" }));
     };
-    const f1 = d => d.s1;
-    const f2 = d => d.s1 + d.p1;
-    const f3 = d => d.s1 + d.p1 + d.s2;
-    const f4 = d => d.s1 + d.p1 + d.s2 + d.p2;
-    const f5 = d => f4(d) + (d.i1 || 0);
-    const f6 = d => f5(d) + (d.i2 || 0);
-    const fTop = d => Math.max(f6(d), d.spend);
-    band(() => 0, f1, "#3D6B9E", 0.34);
-    band(f1, f2, "#3D6B9E", 0.24);
-    band(f2, f3, "#3D6B9E", 0.16);
-    band(f3, f4, "#3D6B9E", 0.09);
-    band(f4, f5, "#3D6B9E", 0.06);
-    band(f5, f6, "#3D6B9E", 0.045);
-    band(f6, fTop, "#3D6B9E", 0.12);
+    /* order streams by first payment age, taken from the sim rows so
+       spouse offsets and retirement clamps are already applied; a stream
+       that never pays sorts last; ties keep the semantic order. The order
+       is published module-wide (bandOrder) so drag handlers and the
+       tooltip stack the same way the chart does. */
+    const firstPay = id => {
+      const r = retRows.find(d => d[id] > 0);
+      return r ? r.age : Infinity;
+    };
+    bandOrder = BAND_SEM.slice().sort((a, b) => {
+      const fa = firstPay(a), fb = firstPay(b);
+      if (fa !== fb) return fa < fb ? -1 : 1;
+      return BAND_SEM.indexOf(a) - BAND_SEM.indexOf(b);
+    });
+    /* fs[k]: stacked height of the first k streams in band order */
+    const fs = [];
+    for (let k = 0; k <= 6; k++) {
+      const ids = bandOrder.slice(0, k);
+      fs.push(d => ids.reduce((s, id) => s + (d[id] || 0), 0));
+    }
+    const fTop = d => Math.max(fs[6](d), d.spend);
+    /* opacities attach to stack position (deepest shade at the bottom),
+       not to stream identity; labels and the tooltip carry identity */
+    const OPS = [0.34, 0.24, 0.16, 0.09, 0.06, 0.045];
+    for (let k = 0; k < 6; k++) band(fs[k], fs[k + 1], "#3D6B9E", OPS[k]);
+    band(fs[6], fTop, "#3D6B9E", 0.12);
     /* hairline along the top of each live income band, so adjacent
        same-hue bands read as distinct */
     const edge = (fLow, fHigh) => {
@@ -1463,12 +1492,7 @@ function renderChart(m) {
       svg.appendChild(el("path", { d, fill:"none", stroke:"#3D6B9E",
         "stroke-width":1, "stroke-opacity":0.55 }));
     };
-    edge(() => 0, f1);
-    edge(f1, f2);
-    edge(f2, f3);
-    edge(f3, f4);
-    edge(f4, f5);
-    edge(f5, f6);
+    for (let k = 0; k < 6; k++) edge(fs[k], fs[k + 1]);
 
     /* Draggable band edges. Each stream's TOP boundary drags that stream's
        amount (the handler subtracts the cumulative height of streams below,
@@ -1476,14 +1500,7 @@ function renderChart(m) {
        ages - except a start pinned to retirement, which moves with the
        retirement handle instead. The spending line is never draggable:
        spending is the output. */
-    const streams = [
-      { id:"s1", fLow:() => 0, fHigh:f1 },
-      { id:"p1", fLow:f1, fHigh:f2 },
-      { id:"s2", fLow:f2, fHigh:f3 },
-      { id:"p2", fLow:f3, fHigh:f4 },
-      { id:"i1", fLow:f4, fHigh:f5 },
-      { id:"i2", fLow:f5, fHigh:f6 },
-    ];
+    const streams = bandOrder.map((id, k) => ({ id, fLow:fs[k], fHigh:fs[k + 1] }));
     for (const st of streams) {
       const act = retRows.filter(d => d[st.id] > 0);
       if (!act.length) continue;
@@ -1525,13 +1542,8 @@ function renderChart(m) {
         "text-anchor":"end", "font-size":11, fill:color,
         "class":"axis-label" }, txt));
     };
-    bandLabel("Social Security", () => 0, f1, "#2C4F76");
-    bandLabel("pension", f1, f2, "#2C4F76");
-    bandLabel("Social Security 2", f2, f3, "#2C4F76");
-    bandLabel("pension 2", f3, f4, "#2C4F76");
-    bandLabel("other income", f4, f5, "#2C4F76");
-    bandLabel("other income 2", f5, f6, "#2C4F76");
-    bandLabel("withdrawal", f6, fTop, "#2C4F76");
+    bandOrder.forEach((id, k) => bandLabel(BAND_LBL[id], fs[k], fs[k + 1], "#2C4F76"));
+    bandLabel("withdrawal", fs[6], fTop, "#2C4F76");
   }
 
   const iR = rows.findIndex(d => d.age === m.R);
@@ -1684,15 +1696,16 @@ function attachRateDrag() {
      destroying the circle mid-drag; the drag must not depend on any one
      element surviving. Vertical position maps to the fixed 0-8% scale. */
   const svg = document.getElementById("chart");
-  /* stream metadata: state keys and how to compute the stacked height BELOW
-     each stream from a chart row */
+  /* stream metadata: state keys per stream. Streams stack by first payment
+     age (see renderChart), so the height BELOW a stream is computed from
+     the published band order rather than a fixed formula. */
   const STREAMS = {
-    s1: { amt:"ssAmt",   age:"ssAge",   stop:"ssStop",   cola:() => true,           below: d => 0 },
-    p1: { amt:"penAmt",  age:"penAge",  stop:"penStop",  cola:() => state.penCola,  below: d => d.s1 },
-    s2: { amt:"ss2Amt",  age:"ss2Age",  stop:"ss2Stop",  cola:() => true,           below: d => d.s1 + d.p1 },
-    p2: { amt:"pen2Amt", age:"pen2Age", stop:"pen2Stop", cola:() => state.pen2Cola, below: d => d.s1 + d.p1 + d.s2 },
-    i1: { amt:"inc1Amt", age:"inc1Age", stop:"inc1Stop", cola:() => state.inc1Cola, below: d => d.p1 + d.p2 + d.s1 + d.s2 },
-    i2: { amt:"inc2Amt", age:"inc2Age", stop:"inc2Stop", cola:() => state.inc2Cola, below: d => d.p1 + d.p2 + d.s1 + d.s2 + (d.i1 || 0) },
+    s1: { amt:"ssAmt",   age:"ssAge",   stop:"ssStop",   cola:() => true,           below: d => stackBelow("s1", d) },
+    p1: { amt:"penAmt",  age:"penAge",  stop:"penStop",  cola:() => state.penCola,  below: d => stackBelow("p1", d) },
+    s2: { amt:"ss2Amt",  age:"ss2Age",  stop:"ss2Stop",  cola:() => true,           below: d => stackBelow("s2", d) },
+    p2: { amt:"pen2Amt", age:"pen2Age", stop:"pen2Stop", cola:() => state.pen2Cola, below: d => stackBelow("p2", d) },
+    i1: { amt:"inc1Amt", age:"inc1Age", stop:"inc1Stop", cola:() => state.inc1Cola, below: d => stackBelow("i1", d) },
+    i2: { amt:"inc2Amt", age:"inc2Age", stop:"inc2Stop", cola:() => state.inc2Cola, below: d => stackBelow("i2", d) },
   };
   STREAMS.p2.spouse = true; STREAMS.s2.spouse = true;
   const sOffNow = st => (st.spouse && state.spouseAge > 0)
@@ -1853,24 +1866,10 @@ function attachTooltip() {
         : retired
         ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
               fmt$(Math.abs(d.wd))) +
-          (d.s1 > 0
-            ? row("Social Security", '<span style="color:#3D6B9E">' + fmt$(d.s1) + "</span>")
-            : "") +
-          (d.p1 > 0
-            ? row("Pension", '<span style="color:#3D6B9E">' + fmt$(d.p1) + "</span>")
-            : "") +
-          (d.s2 > 0
-            ? row("Social Security 2", '<span style="color:#3D6B9E">' + fmt$(d.s2) + "</span>")
-            : "") +
-          (d.p2 > 0
-            ? row("Pension 2", '<span style="color:#3D6B9E">' + fmt$(d.p2) + "</span>")
-            : "") +
-          (d.i1 > 0
-            ? row("Other income", '<span style="color:#3D6B9E">' + fmt$(d.i1) + "</span>")
-            : "") +
-          (d.i2 > 0
-            ? row("Other income 2", '<span style="color:#3D6B9E">' + fmt$(d.i2) + "</span>")
-            : "")
+          /* income rows follow the chart's bottom-to-top band order */
+          bandOrder.map(id => d[id] > 0
+            ? row(TIP_LBL[id], '<span style="color:#3D6B9E">' + fmt$(d[id]) + "</span>")
+            : "").join("")
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
       row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>") +
       (lastEnv && d.phase === "retired"
