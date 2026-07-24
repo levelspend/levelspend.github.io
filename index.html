@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.24h -->
+<!-- LevelSpend build 2026.07.24i -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -412,7 +412,7 @@
               a stream early; leave it blank to run to the end age.</li>
           <li>Set the <b>portfolio growth rate</b> as in step 3
               opposite.</li>
-          <li>Read <b>Retirement spending</b> in the stats row: the level
+          <li>Read <b>Retirement spending</b> above the chart: the level
               annual amount, in today's dollars and before tax, that your
               portfolio plus future income can sustain through the end
               age.</li>
@@ -459,7 +459,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24h</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24i</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -865,6 +865,9 @@ function solveRStarExact(Rint) {
 
 const fmt$ = v => !Number.isFinite(v) ? "\u2014"
   : (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
+/* the percent counterpart of fmt$: no readout prints a non-finite number,
+   whatever the caller hands it */
+const fmtPct = v => !Number.isFinite(v) ? "\u2014" : v.toFixed(1) + "%";
 function fmtAxis(v) {
   const a = Math.abs(v), s = v < 0 ? "−" : "";
   if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
@@ -1170,7 +1173,8 @@ function buildInputs() {
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Multiplies the chart by inflation, compounded from your age now, so ' +
         'amounts appear as they would in each future year. Everything you ' +
-        'enter, and the stats, stay in today\'s dollars. Uses the Inflation ' +
+        'enter, and the numbers above the chart, stay in today\'s dollars. ' +
+        'Uses the Inflation ' +
         'setting.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.tiltPct !== 0 ? " open" : "") + '>' +
@@ -1186,9 +1190,10 @@ function buildInputs() {
         '</div>' +
       '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Planned spending drifts instead of staying level: negative spends more in ' +
-        'early retirement, positive more later. Retirement spending in the stats ' +
-        'is then the first year’s amount.</div>' +
+        'Shift spending between early and late retirement instead of keeping it ' +
+        'level: negative spends more early, positive more later. Any year you ' +
+        'draw on the Spending tilt curve below overrides this. Retirement ' +
+        'spending above the chart then shows the first year\'s amount.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.tiltOn ? " open" : "") + '>' +
       '<summary>Spending tilt curve</summary>' +
@@ -1467,12 +1472,23 @@ function refreshInputs(m) {
     document.getElementById("sStar").textContent = "n/a (no retirement years)";
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else {
-    setBtn.disabled = false; setBtn.style.opacity = ""; setBtn.style.cursor = "pointer";
+    /* s* is non-finite exactly when there is no household income to save
+       from, since its denominator carries a factor of salary. Minus
+       infinity still carries the true message that the resources already
+       suffice, so that branch stands. NaN (nothing entered at all, as
+       after clear) and plus infinity (a legacy target with no way to fund
+       it) name no savings rate, and pressing the button there would write
+       NaN into the savings rate, so it grays with the other n/a cases. */
+    const degen = !Number.isFinite(m.sStar) && !(m.sStar <= 0);
+    setBtn.disabled = degen;
+    setBtn.style.opacity = degen ? "0.5" : "";
+    setBtn.style.cursor = degen ? "default" : "pointer";
     const sTarget = Math.min(100, Math.max(0, m.sStar * 100));
     document.getElementById("sStar").textContent =
       m.sStar <= 0 ? "balance + income suffice"
+      : degen ? "n/a (no household income)"
       : Math.abs(state.savePct - sTarget) < 0.05 ? "spending is level"
-      : "setting savings: " + (m.sStar * 100).toFixed(1) + "%";
+      : "setting savings: " + fmtPct(m.sStar * 100);
   }
   /* already retired (retirement age at or before age now): both solve
      buttons and the salary row are inapplicable, so they gray in place;
@@ -2953,7 +2969,7 @@ function buildReport() {
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.24h \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.24i \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
