@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.24a -->
+<!-- LevelSpend build 2026.07.24b -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -197,6 +197,42 @@
     .left { flex:1 1 auto; width:100%; }
     .right { position:static; width:100%; }
   }
+  /* ---- print report ---- */
+  #report { display:none; }
+  #unitNote { display:none; font-size:11.5px; color:var(--ink-soft);
+    margin:2px 2px 6px; }
+  @media print {
+    @page { margin: 16mm 14mm 22mm; }
+    body > *:not(#report) { display:none !important; }
+    #report { display:block; color:#111; font-size:12px; }
+    .rep-head { font-size:20px; font-weight:600; }
+    .rep-tag { font-size:12px; font-weight:400; color:#555; margin-left:8px; }
+    .rep-sub { font-size:13px; margin-top:2px; }
+    .rep-unit { font-size:11px; color:#444; margin:2px 0 10px; }
+    .rep-h2 { font-size:13px; font-weight:600; margin:14px 0 4px;
+      border-bottom:1px solid #999; padding-bottom:2px; }
+    .rep-h3 { font-size:11.5px; font-weight:600; margin:10px 0 2px; }
+    .rep-table { border-collapse:collapse; width:100%; }
+    .rep-table td { padding:2.5px 8px 2.5px 0; font-size:11.5px;
+      border-bottom:1px solid #E2E2E2; vertical-align:top; }
+    .rep-table td:first-child { color:#333; width:44%; }
+    .rep-note { color:#777; font-size:10.5px; }
+    .rep-link { display:inline-block; margin-top:10px; font-size:11.5px; }
+    .rep-chart svg, .rep-strip svg { width:100%; height:auto; }
+    /* page 2 prints sideways where the browser supports per-page
+       orientation (Chrome, Edge, Firefox); Safari ignores @page size and
+       prints portrait. Orientation keyword only: paper stays the user's. */
+    @page chart { size: landscape; }
+    /* one break point only: the page-name change and the forced break sit
+       on the same element, so they collapse into a single page turn. A
+       separate break element inside the wrapper double-breaks in Chrome
+       and leaves a blank page. */
+    .rep-page2 { page: chart; break-before: page; page-break-before: always; }
+    .rep-foot { position:fixed; bottom:0; left:0; right:0; font-size:9.5px;
+      color:#666; text-align:center; }
+    #report .stats { margin:4px 0 2px; }
+  }
+  /* ---- end print report ---- */
 </style>
 </head>
 <body>
@@ -213,6 +249,8 @@
       title="Load the working example numbers">working example</button>
     <button class="mast-btn" id="retiredBtn"
       title="Load the retired example numbers">retired example</button>
+    <button class="mast-btn" id="printBtn"
+      title="Open your browser's print dialog with a two-page plan report: inputs and results, then the chart. Use the dialog's Save as PDF to keep a dated copy with a live scenario link.">print report</button>
   </span>
 </div>
 <div class="cols">
@@ -227,6 +265,7 @@
     <div class="card" style="padding:16px 16px 8px;">
       <div id="feasWarn" style="display:none;"></div>
       <div class="stats" id="stats"></div>
+      <div id="unitNote"></div>
       <div id="chartBox">
         <svg id="chart" width="100%"></svg>
         <div id="tip"></div>
@@ -289,8 +328,10 @@
         <div class="head">If you are still working</div>
         <ol>
           <li>Enter your <b>age now</b>, planning <b>end age</b> (an age you
-              are unlikely to outlive), and <b>salary</b> (your household's
-              total); then your <b>starting portfolio</b> and any
+              are unlikely to outlive), and <b>household earned
+              income</b> (wages for the whole household; pensions and
+              Social Security have their own slots); then your
+              <b>starting portfolio</b> and any
               <b>legacy</b> you want left at the end age, in today's dollars.
               Enter 0 to spend everything.</li>
           <li>Enter <b>Social Security</b> and <b>pension</b> in today's
@@ -311,7 +352,7 @@
               draws the cost of guessing 1% wrong directly on the chart.</li>
           <li>Under <b>Decision variables</b>, enter the <b>retirement
               age</b> you have in mind and your <b>savings rate</b>, the
-              share of salary you currently save.</li>
+              share of household earned income you currently save.</li>
           <li>Read the chart and stats. Spending is level when working
               spending and retirement spending match, with no step at the
               retirement age. If there is a step, press either <b>solve</b>
@@ -337,7 +378,7 @@
           <li>Press <b>retired example</b> (top right) and replace its
               numbers with yours, or set <b>retirement age</b> equal to your
               <b>age now</b>. Either way, the working-side inputs
-              (<b>salary</b>, <b>savings rate</b>, and both <b>solve</b>
+              (<b>household earned income</b>, <b>savings rate</b>, and both <b>solve</b>
               buttons) gray out: with no working years they no longer
               apply.</li>
           <li>Enter your <b>age now</b>, planning <b>end age</b> (an age you
@@ -372,7 +413,7 @@
               spending from the portfolio.</li>
           <li>Follow the already-retired setup above: <b>retirement age</b>
               equal to your <b>age now</b>.</li>
-          <li>Enter your remaining salary in a <b>pension</b> slot, or an
+          <li>Enter your remaining income in a <b>pension</b> slot, or an
               <b>Other income</b> slot under <b>More income</b> in
               <b>Advanced</b>: the amount per year, <b>start age</b> at your
               age now, <b>stop age</b> at your last working year. Leave its
@@ -402,8 +443,10 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24a</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24b</span>
 </footer>
+
+<div id="report" aria-hidden="true"></div>
 
 <script>
 "use strict";
@@ -428,7 +471,7 @@ const state = {
   curveOn: false, tiltOn: false, tiltYMin: -3, tiltYMax: 3,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
-  envOn: false,
+  envOn: false, futureOn: false,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -979,7 +1022,7 @@ function buildInputs() {
       numField("startAge", "Age now", 1, null,
         "Your age today; the projection runs from here to the end age") +
       numField("endAge", "End age", 1) +
-      moneyField("salary", "Salary", 1000) +
+      moneyField("salary", "Household earned income", 1000) +
     '</div>' +
     '<div class="note" id="note-ages" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;"></div>' +
     '<div class="grid2">' +
@@ -1176,6 +1219,16 @@ function buildInputs() {
         'would support if the growth rate were one point lower or one point ' +
         'higher. Spending absorbs the difference; nothing else changes.</div>' +
       '</details>' +
+      '<details class="adv sub"' + (state.futureOn ? " open" : "") + '>' +
+      '<summary>Future dollars</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-futureOn"> ' +
+        'Show the chart in future dollars</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Multiplies the chart by inflation, compounded from your age now, so ' +
+        'amounts appear as they would in each future year. Everything you ' +
+        'enter, and the stats, stay in today\'s dollars. Uses the Inflation ' +
+        'setting.</div>' +
+      '</details>' +
       '<details class="adv sub"' + (state.curveOn ? " open" : "") + '>' +
       '<summary>Growth rate curve</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-curveOn"> ' +
@@ -1242,6 +1295,10 @@ function buildInputs() {
   const envBox = host.querySelector("#v-envOn");
   envBox.addEventListener("change", e => {
     state.envOn = e.target.checked; render(); pushHistory();
+  });
+  const futBox = host.querySelector("#v-futureOn");
+  futBox.addEventListener("change", e => {
+    state.futureOn = e.target.checked; render(); pushHistory();
   });
   const jumpBox = host.querySelector("#v-glideJump");
   jumpBox.addEventListener("change", e => {
@@ -1326,6 +1383,8 @@ function refreshInputs(m) {
   if (abB) abB.checked = !!state.allowBorrow;
   const evB = document.getElementById("v-envOn");
   if (evB) evB.checked = !!state.envOn;
+  const fuB = document.getElementById("v-futureOn");
+  if (fuB) fuB.checked = !!state.futureOn;
   const gRow = document.getElementById("glideRow");
   if (gRow) gRow.style.display = state.glide ? "" : "none";
   syncBox("v-rateMid", state.rateMid);
@@ -1446,7 +1505,7 @@ function renderStats(m) {
     (m.nWork === 0
       ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
       : stat("Working spending", fmt$(m.workSpend), "var(--accum)",
-             "salary − savings")) +
+             "income − savings")) +
     (m.nRet === 0
       ? stat("Retirement spending", "—", "var(--ink-soft)",
              "no retirement years")
@@ -1490,6 +1549,26 @@ const stackBelow = (id, d) => {
   return s;
 };
 
+/* ---- future dollars (lens) ----
+   A unit change, not a plan change: multiplies every dollar the chart shows
+   by inflation compounded from age now, so amounts appear as they would in
+   each future year. Inputs, stats, and both drawing strips stay in today's
+   dollars; the engine never sees this. Case law amendment: a lens that
+   changes the unit relabels the axis and may rescale the picture; the
+   layout-freeze rule protects same-unit interactions only. */
+function futureView(sim) {
+  if (!sim) return sim;
+  const b = 1 + state.inflPct / 100, A0 = sim.A0;
+  const rows = sim.rows.map(r => {
+    const c = Object.assign({}, r), f = Math.pow(b, r.age - A0);
+    for (const k in c) if (k !== "age" && typeof c[k] === "number") c[k] *= f;
+    return c;
+  });
+  return Object.assign({}, sim, { rows,
+    atRet: sim.atRet * Math.pow(b, sim.R - A0) });
+}
+/* ---- end future dollars (lens) ---- */
+
 function renderChart(m) {
   const svg = document.getElementById("chart");
   const W = svg.clientWidth || 800;
@@ -1517,6 +1596,11 @@ function renderChart(m) {
     try { envLo = shifted(-1); envHi = shifted(1); }
     finally { for (const k of RK) state[k] = saved[k]; curveShift = 0; }
   }
+  /* ---- future dollars (lens) ---- */
+  if (state.futureOn) {
+    m = futureView(m); envLo = futureView(envLo); envHi = futureView(envHi);
+  }
+  /* ---- end future dollars (lens) ---- */
   lastEnv = state.envOn && envLo && envHi
     ? { lo: envLo.rows, hi: envHi.rows } : null;
   const envBalPools = envLo && envHi
@@ -2096,6 +2180,12 @@ function render() {
   const m = simulate();
   refreshInputs(m);
   renderStats(m);
+  const un = document.getElementById("unitNote");
+  if (un) {
+    un.style.display = state.futureOn ? "block" : "none";
+    if (state.futureOn) un.textContent = "Chart in future dollars at " +
+      state.inflPct + "%/yr. Inputs and stats are today's dollars.";
+  }
   renderChart(m);
 
   const agesNote = document.getElementById("note-ages");
@@ -2654,6 +2744,107 @@ document.getElementById("clearBtn").addEventListener("click", e => {
     ? first : document.getElementById("v-startBal");
   if (tgt) { tgt.focus(); }   // focus handler selects content
 });
+/* ---- print report ----
+   Two printed pages: inputs and results, then the chart and any active
+   drawing strips. Built fresh at print time; the browser's own Save as PDF
+   is the PDF feature, so this costs no dependencies. The link carries the
+   whole scenario; paper readers are assumed to return to the PDF for it. */
+function buildReport() {
+  const host = document.getElementById("report");
+  if (!host) return;
+  const m = simulate();
+  const D = DEFAULTS;
+  const rowsH = [];
+  const add = (l, v, note) => rowsH.push("<tr><td>" + l + "</td><td>" + v +
+    (note ? ' <span class="rep-note">' + note + "</span>" : "") + "</td></tr>");
+  const inert = m.nWork === 0 ? "(not used: no working years)" : "";
+  const span = (amt, a1, a2) => fmt$(amt) + "/yr from " + a1 +
+    (a2 > 0 ? " to " + a2 : "");
+  const colaNote = on => on ? "" : ", not inflation-adjusted";
+  add("Age now", state.startAge);
+  add("End age", state.endAge);
+  add("Retirement age", state.retAge);
+  add("Household earned income", fmt$(state.salary), inert);
+  add("Savings rate", state.savePct + "%", inert);
+  add("Starting portfolio", fmt$(state.startBal));
+  add("Legacy at end age", fmt$(state.legacy));
+  if (state.ssAmt > 0)
+    add("Social Security", span(state.ssAmt, state.ssAge, state.ssStop));
+  if (state.penAmt > 0)
+    add("Pension", span(state.penAmt, state.penAge, state.penStop) +
+      colaNote(state.penCola));
+  add("Portfolio growth rate", state.ratePct + "%");
+  if (state.glide)
+    add("Growth rate glide", "on; the chart's rate path shows the schedule");
+  if (state.tiltPct !== D.tiltPct)
+    add("Spending tilt", (state.tiltPct > 0 ? "+" : "") + state.tiltPct + "%/yr");
+  if (state.inflPct !== D.inflPct) add("Inflation", state.inflPct + "%");
+  if (state.allowBorrow) add("Borrowing", "allowed");
+  if (state.spouseAge > 0) add("Spouse\u2019s age now", state.spouseAge);
+  if (state.ss2Amt > 0)
+    add("Social Security 2", span(state.ss2Amt, state.ss2Age, state.ss2Stop));
+  if (state.pen2Amt > 0)
+    add("Pension 2", span(state.pen2Amt, state.pen2Age, state.pen2Stop) +
+      colaNote(state.pen2Cola));
+  if (state.inc1Amt > 0)
+    add("Other income 1", span(state.inc1Amt, state.inc1Age, state.inc1Stop) +
+      colaNote(state.inc1Cola));
+  if (state.inc2Amt > 0)
+    add("Other income 2", span(state.inc2Amt, state.inc2Age, state.inc2Stop) +
+      colaNote(state.inc2Cola));
+  const nDrawn = o => Object.keys(o).length;
+  if (state.curveOn && nDrawn(rateCurve))
+    add("Growth rate curve", "drawn (" + nDrawn(rateCurve) + " years)");
+  if (state.tiltOn && nDrawn(tiltCurve))
+    add("Spending tilt curve", "drawn (" + nDrawn(tiltCurve) + " years)");
+  const readout = id => {
+    const s = document.getElementById(id);
+    return s && s.textContent ? s.textContent : "\u2014";
+  };
+  const vb = (id, fallback) => {
+    const s = document.getElementById(id);
+    return s ? '<svg viewBox="' + (s.getAttribute("viewBox") || fallback) +
+      '" xmlns="http://www.w3.org/2000/svg">' + s.innerHTML + "</svg>" : "";
+  };
+  const dateStr = new Date().toLocaleDateString(undefined,
+    { year: "numeric", month: "long", day: "numeric" });
+  const unitLine = state.futureOn
+    ? "Chart in future dollars at " + state.inflPct +
+      "%/yr; inputs and stats in today's dollars."
+    : "All values in today's dollars.";
+  host.innerHTML =
+    '<div class="rep-head">LevelSpend' +
+    '<span class="rep-tag">a level-spending retirement solver</span></div>' +
+    '<div class="rep-sub">Plan report \u00b7 ' + dateStr + "</div>" +
+    '<div class="rep-unit">' + unitLine + "</div>" +
+    '<div class="rep-h2">Inputs</div>' +
+    '<table class="rep-table">' + rowsH.join("") + "</table>" +
+    '<div class="rep-h2">Results</div>' +
+    '<div class="stats">' + document.getElementById("stats").innerHTML + "</div>" +
+    '<table class="rep-table">' +
+    "<tr><td>Savings rate for level spending</td><td>" + readout("sStar") + "</td></tr>" +
+    "<tr><td>Retirement age for level spending</td><td>" + readout("rStar") + "</td></tr>" +
+    "</table>" +
+    '<a class="rep-link" href="' + scenarioLink() +
+    '">Open this scenario in LevelSpend</a>' +
+    '<div class="rep-page2">' +
+    '<div class="rep-h2">Plan chart</div>' +
+    '<div class="rep-chart">' + vb("chart", "0 0 800 460") + "</div>" +
+    (state.curveOn ? '<div class="rep-h3">Growth rate curve</div>' +
+      '<div class="rep-strip">' + vb("curveStrip", "0 0 800 200") + "</div>" : "") +
+    (state.tiltOn ? '<div class="rep-h3">Spending tilt curve</div>' +
+      '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div>" : "") +
+    "</div>" +
+    '<div class="rep-foot">printed ' + dateStr +
+    " \u00b7 LevelSpend build 2026.07.24b \u00b7 levelspend.github.io</div>";
+}
+window.addEventListener("beforeprint", buildReport);
+{
+  const pB = document.getElementById("printBtn");
+  if (pB) pB.addEventListener("click", () => { buildReport(); window.print(); });
+}
+/* ---- end print report ---- */
+
 document.getElementById("shareBtn").addEventListener("click", async () => {
   const link = scenarioLink();
   const btn = document.getElementById("shareBtn");
