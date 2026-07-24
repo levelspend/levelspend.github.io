@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.24c -->
+<!-- LevelSpend build 2026.07.24h -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -219,16 +219,22 @@
     .rep-table td:first-child { color:#333; width:44%; }
     .rep-note { color:#777; font-size:10.5px; }
     .rep-link { display:inline-block; margin-top:10px; font-size:11.5px; }
-    .rep-chart svg, .rep-strip svg { width:100%; height:auto; }
-    /* page 2 prints sideways where the browser supports per-page
-       orientation (Chrome, Edge, Firefox); Safari ignores @page size and
-       prints portrait. Orientation keyword only: paper stays the user's. */
-    @page chart { size: landscape; }
-    /* one break point only: the page-name change and the forced break sit
-       on the same element, so they collapse into a single page turn. A
-       separate break element inside the wrapper double-breaks in Chrome
-       and leaves a blank page. */
-    .rep-page2 { page: chart; break-before: page; page-break-before: always; }
+    .rep-strip svg { width:100%; height:auto; }
+    /* page 2 holds the plan chart, rotated a quarter turn inside its own
+       SVG (see rotatedChartSVG) so it reads sideways on a portrait sheet.
+       Rotating the artifact, not the page, means every browser prints the
+       same: no per-page orientation, which Firefox lays out but does not
+       send to the paper, clipping the right edge. The rotated image is
+       sized by HEIGHT, capped so the heading and chart share one page on
+       letter and A4 alike; width follows the chart's own aspect, centered.
+       This bounds the image, not the paper: no page size is declared, and
+       the sheet stays the user's. Strips are short and stay upright; each
+       travels with its heading as one block onto whatever page it lands. */
+    .rep-chart-rot svg { height:225mm; width:auto; max-width:100%;
+      display:block; margin:0 auto; }
+    .rep-chart-rot { break-inside: avoid; page-break-inside: avoid; }
+    .rep-stripblk { break-inside: avoid; page-break-inside: avoid; }
+    .rep-page2 { break-before: page; page-break-before: always; }
     .rep-foot { position:fixed; bottom:0; left:0; right:0; font-size:9.5px;
       color:#666; text-align:center; }
     #report .stats { margin:4px 0 2px; }
@@ -285,6 +291,7 @@
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px;">
         <button class="mast-btn" id="curveReset" type="button">reset curve</button>
         <button class="mast-btn" id="curveShuffle" type="button">shuffle order</button>
+        <button class="mast-btn" id="curveConnect" type="button">connect points</button>
         <span id="curveMean" style="color:var(--ink-soft);"></span>
       </div>
       <svg id="curveStrip" width="100%" viewBox="0 0 800 200"
@@ -294,12 +301,14 @@
         follow the rate settings on the left; drawn years override them. The
         chart above recomputes as you draw. Shuffle order keeps the same drawn
         returns and only changes their order, so any change in spending comes
-        from timing alone.
+        from timing alone. Connect points fills the undrawn years between two
+        drawn ones with a straight line.
       </div>
     </div>
     <div class="card" id="tiltCard" style="padding:12px 16px 10px; margin-top:12px; display:none;">
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px;">
         <button class="mast-btn" id="tiltReset" type="button">reset shape</button>
+        <button class="mast-btn" id="tiltConnect" type="button">connect points</button>
         <span style="color:var(--ink-soft);">y-axis
           <input type="number" class="numbox" id="v-tiltYMin" step="1"
             style="width:52px;" aria-label="Tilt axis minimum percent"> to
@@ -315,7 +324,10 @@
         recomputes as you draw. Values left
         of the dashed retirement marker are
         stored but inactive; move the retirement age to bring them into the
-        plan. The y-axis range above is a lens: narrowing it never changes
+        plan. The first retirement year is the anchor that later changes are
+        measured from, so no change applies to it. Connect points fills the
+        undrawn years between two drawn ones with a straight line. The y-axis
+        range above is a lens: narrowing it never changes
         stored values, and values outside it draw pinned at the edge.
       </div>
     </div>
@@ -332,8 +344,8 @@
         <div class="head">If you are still working</div>
         <ol>
           <li>Enter your <b>age now</b>, planning <b>end age</b> (an age you
-              are unlikely to outlive), and <b>household earned
-              income</b> (wages for the whole household; pensions and
+              are unlikely to outlive), and <b>household income</b>
+              (wages for the whole household; pensions and
               Social Security have their own slots); then your
               <b>starting portfolio</b> and any
               <b>legacy</b> you want left at the end age, in today's dollars.
@@ -356,7 +368,7 @@
               draws the cost of guessing 1% wrong directly on the chart.</li>
           <li>Under <b>Decision variables</b>, enter the <b>retirement
               age</b> you have in mind and your <b>savings rate</b>, the
-              share of household earned income you currently save.</li>
+              share of household income you currently save.</li>
           <li>Read the chart and stats. Spending is level when working
               spending and retirement spending match, with no step at the
               retirement age. If there is a step, press either <b>solve</b>
@@ -382,7 +394,7 @@
           <li>Press <b>retired example</b> (top right) and replace its
               numbers with yours, or set <b>retirement age</b> equal to your
               <b>age now</b>. Either way, the working-side inputs
-              (<b>household earned income</b>, <b>savings rate</b>, and both <b>solve</b>
+              (<b>household income</b>, <b>savings rate</b>, and both <b>solve</b>
               buttons) gray out: with no working years they no longer
               apply.</li>
           <li>Enter your <b>age now</b>, planning <b>end age</b> (an age you
@@ -447,7 +459,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24c</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24h</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -912,9 +924,9 @@ function clampVal(key, v) {
      sentinel. Money fields keep the non-negative fallthrough below. */
   if (["ratePct","rateEnd","rateMid"].includes(key)) return Math.max(v, -20);
   if (key === "tiltYMin")
-    return Math.min(Math.max(Math.round(v), -10), Math.min(state.tiltYMax - 1, 9));
+    return Math.min(Math.max(Math.round(v), -60), Math.min(state.tiltYMax - 1, 59));
   if (key === "tiltYMax")
-    return Math.max(Math.min(Math.round(v), 10), Math.max(state.tiltYMin + 1, -9));
+    return Math.max(Math.min(Math.round(v), 60), Math.max(state.tiltYMin + 1, -59));
   return Math.max(v, 0);
 }
 
@@ -1026,7 +1038,7 @@ function buildInputs() {
       numField("startAge", "Age now", 1, null,
         "Your age today; the projection runs from here to the end age") +
       numField("endAge", "End age", 1) +
-      moneyField("salary", "Household earned income", 1000) +
+      moneyField("salary", "Household income", 1000) +
     '</div>' +
     '<div class="note" id="note-ages" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;"></div>' +
     '<div class="grid2">' +
@@ -1151,6 +1163,16 @@ function buildInputs() {
         'living adjustment; the tool then erodes its value by inflation from today ' +
         'onward. Social Security is always inflation adjusted.</div>' +
       '</details>' +
+      '<details class="adv sub"' + (state.futureOn ? " open" : "") + '>' +
+      '<summary>Future dollars</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-futureOn"> ' +
+        'Show the chart in future dollars</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Multiplies the chart by inflation, compounded from your age now, so ' +
+        'amounts appear as they would in each future year. Everything you ' +
+        'enter, and the stats, stay in today\'s dollars. Uses the Inflation ' +
+        'setting.</div>' +
+      '</details>' +
       '<details class="adv sub"' + (state.tiltPct !== 0 ? " open" : "") + '>' +
       '<summary>Spending tilt</summary>' +
       '<div class="rate-row">' +
@@ -1168,8 +1190,17 @@ function buildInputs() {
         'early retirement, positive more later. Retirement spending in the stats ' +
         'is then the first year’s amount.</div>' +
       '</details>' +
+      '<details class="adv sub"' + (state.tiltOn ? " open" : "") + '>' +
+      '<summary>Spending tilt curve</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-tiltOn"> ' +
+        'Draw a per-year spending change</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Adds a drawing strip under the chart. Drawn years set how spending ' +
+        'changes that year, as a percent of the year before; undrawn years ' +
+        'follow the tilt setting.</div>' +
+      '</details>' +
       '<details class="adv sub"' + ((state.glide || state.glideKink) ? " open" : "") + '>' +
-      '<summary>Non-constant growth rate</summary>' +
+      '<summary>Growth rate glidepath</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-glide"> ' +
         'Glide the growth rate over time</label>' +
       '<div class="rate-row" id="glideRow">' +
@@ -1214,25 +1245,6 @@ function buildInputs() {
         'rates: enter the same rate at the start and retirement anchors, and the ' +
         'same lower rate after retirement and at the end.</div>' +
       '</details>' +
-      '<details class="adv sub"' + (state.envOn ? " open" : "") + '>' +
-      '<summary>Rate sensitivity</summary>' +
-      '<label class="adv-check"><input type="checkbox" id="v-envOn"> ' +
-        'Show spending at ±1% growth</label>' +
-      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Draws dashed companion lines: the level spending this same plan ' +
-        'would support if the growth rate were one point lower or one point ' +
-        'higher. Spending absorbs the difference; nothing else changes.</div>' +
-      '</details>' +
-      '<details class="adv sub"' + (state.futureOn ? " open" : "") + '>' +
-      '<summary>Future dollars</summary>' +
-      '<label class="adv-check"><input type="checkbox" id="v-futureOn"> ' +
-        'Show the chart in future dollars</label>' +
-      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Multiplies the chart by inflation, compounded from your age now, so ' +
-        'amounts appear as they would in each future year. Everything you ' +
-        'enter, and the stats, stay in today\'s dollars. Uses the Inflation ' +
-        'setting.</div>' +
-      '</details>' +
       '<details class="adv sub"' + (state.curveOn ? " open" : "") + '>' +
       '<summary>Growth rate curve</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-curveOn"> ' +
@@ -1241,14 +1253,14 @@ function buildInputs() {
         'Adds a drawing strip under the chart. Drawn years override the rate ' +
         'settings above; undrawn years still follow them.</div>' +
       '</details>' +
-      '<details class="adv sub"' + (state.tiltOn ? " open" : "") + '>' +
-      '<summary>Spending tilt curve</summary>' +
-      '<label class="adv-check"><input type="checkbox" id="v-tiltOn"> ' +
-        'Draw a per-year spending change</label>' +
+      '<details class="adv sub"' + (state.envOn ? " open" : "") + '>' +
+      '<summary>Rate sensitivity</summary>' +
+      '<label class="adv-check"><input type="checkbox" id="v-envOn"> ' +
+        'Show spending at ±1% growth</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Adds a drawing strip under the chart. Drawn years set how spending ' +
-        'changes that year, as a percent of the year before; undrawn years ' +
-        'follow the tilt setting.</div>' +
+        'Draws dashed companion lines: the level spending this same plan ' +
+        'would support if the growth rate were one point lower or one point ' +
+        'higher. Spending absorbs the difference; nothing else changes.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
@@ -2383,25 +2395,30 @@ function applyHash() {
         rateCurve[age] = (n - 100) / 5;
     }
   }
-  /* tc=<firstAge>.<codes> restores a drawn tilt curve: two base-36
+  /* tc2=<firstAge>.<codes> restores a drawn tilt curve: two base-36
      characters per year starting the year after firstAge; "--" is an
-     undrawn gap. code = (change + 10) * 10, exact at the 0.1% quantum. */
+     undrawn gap. code = (change + 60) * 10, exact at the 0.1% quantum,
+     which covers -60% to +60% in the same two characters. Legacy tc=
+     links carry the old +10 offset over -10% to +10% and are still read,
+     so a posted link keeps working; only the wide form is written now. */
   for (const pair of pairs) {
-    if (pair.slice(0, 3) !== "tc=") continue;
+    const wide = pair.slice(0, 4) === "tc2=";
+    if (!wide && pair.slice(0, 3) !== "tc=") continue;
     tiltCurve = {};
-    const body = pair.slice(3);
+    const body = pair.slice(wide ? 4 : 3);
     const dot = body.indexOf(".");
     if (dot < 1) continue;
     let age = Number(body.slice(0, dot));
     if (!Number.isFinite(age)) continue;
     const codes = body.slice(dot + 1);
+    const nMax = wide ? 1200 : 200, off = wide ? 600 : 100;
     for (let i = 0; i + 1 < codes.length; i += 2) {
       age++;
       const cc = codes.slice(i, i + 2);
       if (cc === "--") continue;
       const n = parseInt(cc, 36);
-      if (Number.isFinite(n) && n >= 0 && n <= 200)
-        tiltCurve[age] = (n - 100) / 10;
+      if (Number.isFinite(n) && n >= 0 && n <= nMax)
+        tiltCurve[age] = (n - off) / 10;
     }
   }
 }
@@ -2431,10 +2448,10 @@ function scenarioLink() {
     for (let a = a0 + 1; a <= a1; a++) {
       const v = tiltCurve[a];
       codes += v === undefined ? "--"
-        : Math.min(200, Math.max(0, Math.round((v + 10) * 10)))
+        : Math.min(1200, Math.max(0, Math.round((v + 60) * 10)))
             .toString(36).padStart(2, "0");
     }
-    parts.push("tc=" + a0 + "." + codes);
+    parts.push("tc2=" + a0 + "." + codes);
   }
   return location.href.split("#")[0] + "#" + parts.join("&");
 }
@@ -2488,6 +2505,8 @@ function renderCurveStrip() {
     : "";
   const shuf = document.getElementById("curveShuffle");
   if (shuf) shuf.disabled = Object.keys(rateCurve).length < 2;
+  const conn = document.getElementById("curveConnect");
+  if (conn) conn.disabled = !hasGaps(rateCurve);
   const box = document.getElementById("v-curveOn");
   if (box) box.checked = !!state.curveOn;
 }
@@ -2517,6 +2536,37 @@ function shuffleCurve(rand) {
   return true;
 }
 /* ---- end shuffle order ---- */
+/* ---- connect points ---- */
+/* Fills the undrawn years lying strictly between two drawn years with a
+   straight line from one to the other, quantized to the strip's own step.
+   This answers "let me place a few points and have the line find its way
+   between them" without changing the data model: the result is ordinary
+   per-year drawn state, so links, reset, shuffle, and hand-editing all
+   work on it afterwards. Only gaps are filled, so a drawn value is never
+   overwritten, and the years past the last drawn point are left alone to
+   keep following the settings on the left. Interpolated values sit between
+   two values that are already in range, so no clamping is needed. */
+function connectGaps(map, step) {
+  const ages = Object.keys(map).map(Number).sort((a, b) => a - b);
+  let filled = false;
+  for (let i = 0; i + 1 < ages.length; i++) {
+    const a1 = ages[i], a2 = ages[i + 1];
+    if (a2 - a1 < 2) continue;
+    const v1 = map[a1], v2 = map[a2];
+    for (let a = a1 + 1; a < a2; a++) {
+      map[a] = Math.round((v1 + (v2 - v1) * (a - a1) / (a2 - a1)) * step) / step;
+      filled = true;
+    }
+  }
+  return filled;
+}
+function hasGaps(map) {
+  const ages = Object.keys(map).map(Number).sort((a, b) => a - b);
+  for (let i = 0; i + 1 < ages.length; i++)
+    if (ages[i + 1] - ages[i] > 1) return true;
+  return false;
+}
+/* ---- end connect points ---- */
 {
   const svg = document.getElementById("curveStrip");
   let painting = false, lastA = null, lastV = null;
@@ -2570,6 +2620,9 @@ function shuffleCurve(rand) {
   });
   document.getElementById("curveShuffle").addEventListener("click", () => {
     if (shuffleCurve(Math.random)) { render(); pushHistory(); }
+  });
+  document.getElementById("curveConnect").addEventListener("click", () => {
+    if (connectGaps(rateCurve, 5)) { render(); pushHistory(); }
   });
 }
 { /* every render also refreshes the strip */
@@ -2641,6 +2694,8 @@ function renderTiltStrip() {
       (k === 1 ? "#6B7280" : drawn ? "#374151" : "#B9BEC6") + '"/>';
   }
   svg.innerHTML = out;
+  const tconn = document.getElementById("tiltConnect");
+  if (tconn) tconn.disabled = !hasGaps(tiltCurve);
   const box = document.getElementById("v-tiltOn");
   if (box) box.checked = !!state.tiltOn;
   const bMin = document.getElementById("v-tiltYMin"),
@@ -2706,6 +2761,9 @@ function tiltPaintAt(age, val) {
   });
   document.getElementById("tiltReset").addEventListener("click", () => {
     tiltCurve = {}; render(); pushHistory();
+  });
+  document.getElementById("tiltConnect").addEventListener("click", () => {
+    if (connectGaps(tiltCurve, 10)) { render(); pushHistory(); }
   });
   document.addEventListener("change", e => {
     if (!e.target) return;
@@ -2793,7 +2851,7 @@ function buildReport() {
   add("Age now", state.startAge);
   add("End age", state.endAge);
   add("Retirement age", state.retAge);
-  add("Household earned income", fmt$(state.salary), inert);
+  add("Household income", fmt$(state.salary), inert);
   add("Savings rate", state.savePct + "%", inert);
   add("Starting portfolio", fmt$(state.startBal));
   add("Legacy at end age", fmt$(state.legacy));
@@ -2835,6 +2893,36 @@ function buildReport() {
     return s ? '<svg viewBox="' + (s.getAttribute("viewBox") || fallback) +
       '" xmlns="http://www.w3.org/2000/svg">' + s.innerHTML + "</svg>" : "";
   };
+  /* The chart clone gets two report-only changes, both on a detached DOM
+     copy so nothing on the page moves:
+       - the gold balance area is repainted with a flat fill and a
+         fill-opacity attribute. On screen it is a gradient (fill
+         url(#gBal), stops 0.12 -> 0.015); PDF exporters commonly drop
+         gradient stop-opacity, printing a solid gold slab over the bands.
+         A flat fill-opacity is the same technique the income bands use
+         and prints correctly. The cloned <defs> goes too, so no duplicate
+         id="gBal" lives in the document while the report is up.
+       - the whole drawing is turned a quarter turn: the outer viewBox
+         swaps to H x W and the content rides a rotate(90) then a
+         translate, so a wide-window chart and a narrow-window chart land
+         in the same rotated portrait footprint. width:100% then fills the
+         page across, reading sideways. */
+  const rotatedChartSVG = () => {
+    const s = document.getElementById("chart");
+    if (!s) return "";
+    const vbAttr = (s.getAttribute("viewBox") || "0 0 800 460").split(/\s+/).map(Number);
+    const W = vbAttr[2] || 800, H = vbAttr[3] || 460;
+    const g = s.cloneNode(true);
+    g.querySelectorAll("defs").forEach(d => d.remove());
+    g.querySelectorAll('[fill="url(#gBal)"]').forEach(p => {
+      p.setAttribute("fill", "#C0973B");
+      p.setAttribute("fill-opacity", "0.10");
+    });
+    return '<svg viewBox="0 0 ' + H + " " + W +
+      '" xmlns="http://www.w3.org/2000/svg">' +
+      '<g transform="rotate(90) translate(0 ' + (-H) + ')">' +
+      g.innerHTML + "</g></svg>";
+  };
   const dateStr = new Date().toLocaleDateString(undefined,
     { year: "numeric", month: "long", day: "numeric" });
   const unitLine = state.futureOn
@@ -2858,14 +2946,14 @@ function buildReport() {
     '">Open this scenario in LevelSpend</a>' +
     '<div class="rep-page2">' +
     '<div class="rep-h2">Plan chart</div>' +
-    '<div class="rep-chart">' + vb("chart", "0 0 800 460") + "</div>" +
-    (state.curveOn ? '<div class="rep-h3">Growth rate curve</div>' +
-      '<div class="rep-strip">' + vb("curveStrip", "0 0 800 200") + "</div>" : "") +
-    (state.tiltOn ? '<div class="rep-h3">Spending tilt curve</div>' +
-      '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div>" : "") +
+    '<div class="rep-chart rep-chart-rot">' + rotatedChartSVG() + "</div>" +
+    (state.curveOn ? '<div class="rep-stripblk"><div class="rep-h3">Growth rate curve</div>' +
+      '<div class="rep-strip">' + vb("curveStrip", "0 0 800 200") + "</div></div>" : "") +
+    (state.tiltOn ? '<div class="rep-stripblk"><div class="rep-h3">Spending tilt curve</div>' +
+      '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.24c \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.24h \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
