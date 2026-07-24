@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.24b -->
+<!-- LevelSpend build 2026.07.24c -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -188,6 +188,7 @@
               background:none; border-radius:4px; cursor:pointer;
               color:var(--ink-soft); font-family:inherit; }
   .mast-btn:hover { color:var(--ink); border-color:var(--ink-soft); }
+  .mast-btn:disabled { opacity:0.45; cursor:default; }
   .site-name { font-family:Charter,Georgia,serif; font-size:21px; font-weight:600;
                letter-spacing:0.2px; color:var(--ink); }
   .site-tag { font-family:Charter,Georgia,serif; font-style:italic; font-size:13px;
@@ -283,6 +284,7 @@
     <div class="card" id="curveCard" style="padding:12px 16px 10px; margin-top:12px; display:none;">
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px;">
         <button class="mast-btn" id="curveReset" type="button">reset curve</button>
+        <button class="mast-btn" id="curveShuffle" type="button">shuffle order</button>
         <span id="curveMean" style="color:var(--ink-soft);"></span>
       </div>
       <svg id="curveStrip" width="100%" viewBox="0 0 800 200"
@@ -290,7 +292,9 @@
       <div style="font-size:11px; color:var(--ink-soft); line-height:1.45;">
         Draw with the mouse: each year's real return, in percent. Undrawn years
         follow the rate settings on the left; drawn years override them. The
-        chart above recomputes as you draw.
+        chart above recomputes as you draw. Shuffle order keeps the same drawn
+        returns and only changes their order, so any change in spending comes
+        from timing alone.
       </div>
     </div>
     <div class="card" id="tiltCard" style="padding:12px 16px 10px; margin-top:12px; display:none;">
@@ -443,7 +447,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24b</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24c</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -2482,6 +2486,8 @@ function renderCurveStrip() {
   if (mean) mean.textContent = n > 0
     ? "effective mean " + (sum / n).toFixed(1) + "%/yr over " + n + " years"
     : "";
+  const shuf = document.getElementById("curveShuffle");
+  if (shuf) shuf.disabled = Object.keys(rateCurve).length < 2;
   const box = document.getElementById("v-curveOn");
   if (box) box.checked = !!state.curveOn;
 }
@@ -2491,6 +2497,26 @@ function paintAt(age, val) {
   if (age <= g.A0 || age > g.E) return;
   rateCurve[age] = Math.round(Math.max(CURVE.yMin, Math.min(CURVE.yMax, val)) * 5) / 5;
 }
+/* ---- shuffle order ---- */
+/* Permutes the drawn values among the drawn ages (Fisher-Yates). The set of
+   returns is fixed and only their order changes, so the effective mean is
+   unchanged and any change in level spending is sequence timing alone.
+   Randomness happens only here, at the click: the result is ordinary drawn
+   state, so links, reset, and hand-editing all work on it, and a shared
+   link reproduces the shuffled schedule exactly. rand is injected so the
+   test suite can drive deterministic permutations. */
+function shuffleCurve(rand) {
+  const ages = Object.keys(rateCurve).map(Number).sort((a, b) => a - b);
+  if (ages.length < 2) return false;
+  const vals = ages.map(a => rateCurve[a]);
+  for (let i = vals.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const t = vals[i]; vals[i] = vals[j]; vals[j] = t;
+  }
+  ages.forEach((a, i) => { rateCurve[a] = vals[i]; });
+  return true;
+}
+/* ---- end shuffle order ---- */
 {
   const svg = document.getElementById("curveStrip");
   let painting = false, lastA = null, lastV = null;
@@ -2541,6 +2567,9 @@ function paintAt(age, val) {
   });
   document.getElementById("curveReset").addEventListener("click", () => {
     rateCurve = {}; render(); pushHistory();
+  });
+  document.getElementById("curveShuffle").addEventListener("click", () => {
+    if (shuffleCurve(Math.random)) { render(); pushHistory(); }
   });
 }
 { /* every render also refreshes the strip */
@@ -2836,7 +2865,7 @@ function buildReport() {
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.24b \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.24c \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
