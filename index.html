@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.25g -->
+<!-- LevelSpend build 2026.07.25i-shock -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -157,6 +157,13 @@
   @media (prefers-reduced-motion: reduce) {
     #exampleNote { transition:none; }
   }
+  /* Screen-reader only. The chart's own figures, as a table, for a reader
+     that can use neither an SVG nor a hover tooltip. It occupies no space and
+     forces no layout, so the default view is unchanged for everyone else; the
+     print rule below hides it with the rest of the page. */
+  .sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+             overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%);
+             white-space:nowrap; border:0; }
   #chartBox { position:relative; }
   #tip {
     position:absolute; pointer-events:none; display:none;
@@ -202,6 +209,8 @@
   #report { display:none; }
   #unitNote { display:none; font-size:11.5px; color:var(--ink-soft);
     margin:2px 2px 6px; }
+  #shockNote { display:none; font-size:11.5px; color:#7A5A24;
+    margin:2px 2px 6px; }
   @media print {
     @page { margin: 16mm 14mm 22mm; }
     body > *:not(#report) { display:none !important; }
@@ -239,6 +248,19 @@
     .rep-chart { break-inside: avoid; page-break-inside: avoid; }
     .rep-stripblk { break-inside: avoid; page-break-inside: avoid; }
     .rep-page2 { break-before: page; page-break-before: always; }
+    .rep-page3 { break-before: page; page-break-before: always; }
+    /* The year table: whatever the plan's span, one line per year at this
+       size fits a sheet or two, and the header repeats on each because it
+       lives in a thead. Tighter than the input tables and right-aligned on
+       the figures, since the point of it is columns of numbers that can be
+       compared down the page or copied into a spreadsheet. */
+    .rep-years { border-collapse:collapse; width:100%; font-size:10px; }
+    .rep-years th, .rep-years td { padding:1.5px 6px; border-bottom:1px solid #EDEDED;
+      text-align:right; font-variant-numeric:tabular-nums; }
+    .rep-years th { border-bottom:1px solid #999; font-weight:600; text-align:right; }
+    .rep-years th:first-child, .rep-years td:first-child,
+    .rep-years th:nth-child(2), .rep-years td:nth-child(2) { text-align:left; }
+    .rep-years thead { display:table-header-group; }
     .rep-foot { position:fixed; bottom:0; left:0; right:0; font-size:9.5px;
       color:#666; text-align:center; }
     #report .stats { margin:4px 0 2px; }
@@ -277,10 +299,12 @@
       <div id="feasWarn" style="display:none;"></div>
       <div class="stats" id="stats"></div>
       <div id="unitNote"></div>
+      <div id="shockNote"></div>
       <div id="chartBox">
-        <svg id="chart" width="100%"></svg>
+        <svg id="chart" width="100%" role="img" aria-label="Plan chart"></svg>
         <div id="tip"></div>
       </div>
+      <table id="planTable" class="sr-only"></table>
       <!--
         Portfolio balance: left axis (gold throughout, zero at end age).
         Annual flows: right axis (spending step line: working green, retirement
@@ -400,7 +424,7 @@
               a real (after-inflation) return: historically roughly 2% to 7%
               depending on the era and starting valuations. No one knows this
               rate in advance; try several values and see how much the
-              results move. <b>Rate sensitivity</b>, under <b>Advanced</b>,
+              results move. <b>Sensitivity</b>, under <b>Advanced</b>,
               draws the cost of guessing 1% wrong directly on the chart.</li>
           <li>Under <b>Decision variables</b>, enter the <b>retirement
               age</b> you have in mind and your <b>savings rate</b>, the
@@ -419,6 +443,10 @@
               <b>solve</b> next to <b>savings rate</b> again: the updated
               rate is your savings target for the year ahead. Or re-solve
               <b>retirement age</b> and watch your feasible date move.
+              This update is also where a bad market shows up: try the same
+              solve with your <b>starting portfolio</b> a third lower to see
+              how far your savings target or feasible retirement age would
+              move.
               <b>copy scenario link</b> (top right) makes a bookmarkable
               link containing your inputs; nothing is stored
               otherwise.</li>
@@ -456,7 +484,10 @@
               finances: update your <b>age now</b>, <b>starting
               portfolio</b>, and anything else that has changed. The updated
               <b>Retirement spending</b> is your spending level for the year
-              ahead.</li>
+              ahead. This update is also where a bad market shows up: try
+              re-reading <b>Retirement spending</b> with your <b>starting
+              portfolio</b> a third lower to see the cut a bad year would ask
+              you to absorb.</li>
         </ol>
         <div class="head">If you are semi-retired</div>
         <ol>
@@ -485,7 +516,11 @@
       this tool does not model. Nor does it model account types, required minimum
       distributions, or market volatility. It answers one question: given an
       assumed return, what level of real spending is consistent with your
-      resources.
+      resources. That is why the yearly revisit above is part of the method
+      and not an extra: re-solving against the portfolio you actually have
+      makes the growth rate a setting you turn rather than a forecast you are
+      held to, since a poor year arrives as a smaller portfolio at the next
+      reading and the spending figure moves with it.
     </div>
   </div>
 </div>
@@ -496,7 +531,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25g</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25i-shock</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -531,6 +566,7 @@ const state = {
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false, futureOn: false,
+  dropOn: false, dropPct: 30,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -1071,30 +1107,12 @@ function solveRStarExact(Rint) {
   }
   return hi;
 }
-/* ---- end model ---- */
-
-const fmt$ = v => !Number.isFinite(v) ? "\u2013"
-  : (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
-/* the percent counterpart of fmt$: no readout prints a non-finite number,
-   whatever the caller hands it */
-const fmtPct = v => !Number.isFinite(v) ? "\u2013" : v.toFixed(1) + "%";
-function fmtAxis(v) {
-  const a = Math.abs(v), s = v < 0 ? "−" : "";
-  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
-  if (a >= 1e3) return s + "$" + Math.round(a / 1e3) + "k";
-  return s + "$" + Math.round(a);
-}
-function niceTicks(max, target) {
-  if (max <= 0) return [0];
-  const raw = max / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  let step = 10 * mag;
-  for (const m of [1, 2, 2.5, 5]) if (m * mag >= raw) { step = m * mag; break; }
-  const ticks = [];
-  for (let t = 0; t <= max + 1e-9; t += step) ticks.push(t);
-  return ticks;
-}
-
-/* ---------------- input form ---------------- */
+/* ---- input clamping ----
+   Every entry path runs through this: typed edits, chart drags, preset
+   buttons and scenario links. It sits inside the model region because it
+   decides what a number MEANS before any math sees it, and because a link
+   round trip cannot be tested without it. Like the rest of the region it
+   touches no DOM and no browser API. */
 let ratchetNote = "";
 function clampVal(key, v) {
   // non-finite input (blank, alpha) -> reject: keep the current value
@@ -1131,6 +1149,7 @@ function clampVal(key, v) {
     return Math.max(Math.round(v), 0);
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
   if (key === "tiltPct") return Math.min(Math.max(v, -10), 10);
+  if (key === "dropPct") return Math.min(Math.max(Math.round(v * 10) / 10, 0), 95);
   if (key === "rateMid2") return v < 0 ? -1 : Math.max(v, 0);
   /* growth rates may be negative (a real loss, e.g. cash under inflation),
      floored at -20%. rateMid2 is excluded: its negative is the coupled
@@ -1149,6 +1168,127 @@ function clampVal(key, v) {
   return Math.max(v, 0);
 }
 
+/* ---- scenario link ----
+   A link spells out only the keys whose values differ from LINK_BASE, and any
+   key a link leaves out is read back as its LINK_BASE value. That is what
+   keeps a shared link short: a typical scenario differs from the baseline in
+   about a dozen of these keys, so the other three dozen cost nothing to
+   carry.
+
+   LINK_BASE IS FROZEN. It is not the working example and must not be kept in
+   step with it. Retuning the example has to leave every link already posted in
+   a forum decoding to the numbers its author saw, and that holds only while
+   this table stays exactly as it is. The two tables happen to agree today,
+   which is why the working example writes the shortest link the tool can
+   produce, but that agreement is a coincidence and nothing may depend on it.
+   When a new setting joins state, append it here with the value an older link,
+   written before that setting existed, should be read as having. Never edit an
+   entry that is already here; test/model.mjs checksums this table and fails if
+   one is.
+
+   v=2 marks the short form. Links written by earlier builds carry no v and
+   spell out every key, so they are applied onto the state as loaded and land
+   where they always did. */
+const LINK_BASE = {
+  startBal: 50000, salary: 75000, savePct: 15, ratePct: 4,
+  startAge: 35, retAge: 57, endAge: 95,
+  penAmt: 12000, penAge: 65, penStop: 0, ssAmt: 24000, ssAge: 70, ssStop: 0,
+  pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
+  inc1Amt: 0, inc1Age: 67, inc1Stop: 0, inc2Amt: 0, inc2Age: 67, inc2Stop: 0,
+  spouseAge: 0,
+  legacy: 0,
+  inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true,
+  tiltPct: 0,
+  curveOn: false, tiltOn: false, tiltYMin: -3, tiltYMax: 3,
+  curveYMin: -20, curveYMax: 12,
+  glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
+  glideJump: false, rateMid2: -1, allowBorrow: false,
+  envOn: false, futureOn: false,
+  dropOn: false, dropPct: 30,
+};
+const LINK_VER = "2";
+/* the parameters of a link for st, in state order, v first */
+function linkParams(st) {
+  const parts = ["v=" + LINK_VER];
+  for (const k in LINK_BASE) {
+    const v = st[k];
+    if (v === LINK_BASE[k]) continue;
+    parts.push(k + "=" + (typeof v === "boolean" ? (v ? 1 : 0) : v));
+  }
+  const rc = encodeCurve(rateCurve, GRID.rate);
+  if (rc) parts.push(rc);
+  const tc = encodeCurve(tiltCurve, GRID.tilt);
+  if (tc) parts.push(tc);
+  return parts;
+}
+/* Reads a link's parameters into state and the drawn curves. The short form
+   resets to the baseline first, so a key a link omits reads as its baseline
+   value rather than as whatever happened to be on screen. */
+function applyParams(pairs) {
+  if (pairs.indexOf("v=" + LINK_VER) >= 0) {
+    Object.assign(state, LINK_BASE);
+    rateCurve = {};
+    tiltCurve = {};
+  }
+  for (let pass = 0; pass < 2; pass++) {      // 2 passes: age clamps depend on each other
+    for (const pair of pairs) {
+      const eq = pair.indexOf("=");
+      if (eq < 1) continue;
+      const k = pair.slice(0, eq), v = pair.slice(eq + 1);
+      if (!(k in LINK_BASE)) continue;
+      if (typeof LINK_BASE[k] === "boolean") { state[k] = v === "1"; continue; }
+      const n = Number(v);
+      if (!Number.isFinite(n)) continue;
+      const c = clampVal(k, n);
+      if (c !== null) state[k] = c;
+    }
+  }
+  /* rc2=<firstAge>.<codes> restores a drawn return schedule; legacy rc=
+     links carry the old narrow grid and are still read, so a link posted
+     under an earlier build keeps working. Only the wide form is written. */
+  for (const pair of pairs) {
+    const wide = pair.slice(0, 4) === "rc2=";
+    if (!wide && pair.slice(0, 3) !== "rc=") continue;
+    const m = decodeCurve(pair.slice(wide ? 4 : 3),
+                          wide ? GRID.rate : GRID.rateLegacy);
+    if (m) rateCurve = m;
+  }
+  /* tc2=<firstAge>.<codes> restores a drawn tilt curve; legacy tc= links
+     carry the old narrow grid and are still read. Only the wide form is
+     written. */
+  for (const pair of pairs) {
+    const wide = pair.slice(0, 4) === "tc2=";
+    if (!wide && pair.slice(0, 3) !== "tc=") continue;
+    const m = decodeCurve(pair.slice(wide ? 4 : 3),
+                          wide ? GRID.tilt : GRID.tiltLegacy);
+    if (m) tiltCurve = m;
+  }
+}
+/* ---- end scenario link ---- */
+/* ---- end model ---- */
+
+const fmt$ = v => !Number.isFinite(v) ? "\u2013"
+  : (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
+/* the percent counterpart of fmt$: no readout prints a non-finite number,
+   whatever the caller hands it */
+const fmtPct = v => !Number.isFinite(v) ? "\u2013" : v.toFixed(1) + "%";
+function fmtAxis(v) {
+  const a = Math.abs(v), s = v < 0 ? "−" : "";
+  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
+  if (a >= 1e3) return s + "$" + Math.round(a / 1e3) + "k";
+  return s + "$" + Math.round(a);
+}
+function niceTicks(max, target) {
+  if (max <= 0) return [0];
+  const raw = max / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  let step = 10 * mag;
+  for (const m of [1, 2, 2.5, 5]) if (m * mag >= raw) { step = m * mag; break; }
+  const ticks = [];
+  for (let t = 0; t <= max + 1e-9; t += step) ticks.push(t);
+  return ticks;
+}
+
+/* ---------------- input form ---------------- */
 function wireBox(key, box) {
   const isMoney = MONEY_KEYS.includes(key);
   box.addEventListener("focus", e => { const t = e.target; setTimeout(() => t.select(), 0); });
@@ -1474,14 +1614,29 @@ function buildInputs() {
         'drawn or typed. Drawn years override the rate settings above; ' +
         'undrawn years still follow them.</div>' +
       '</details>' +
-      '<details class="adv sub"' + (state.envOn ? " open" : "") + '>' +
-      '<summary>Rate sensitivity</summary>' +
+      '<details class="adv sub"' + ((state.envOn || state.dropOn) ? " open" : "") + '>' +
+      '<summary>Sensitivity</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-envOn"> ' +
         'Show spending at ±1% growth</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Draws dashed companion lines: the level spending this same plan ' +
         'would support if the growth rate were one point lower or one point ' +
         'higher. Spending absorbs the difference; nothing else changes.</div>' +
+      '<label class="adv-check"><input type="checkbox" id="v-dropOn"> ' +
+        'Show the plan after a portfolio drop of</label>' +
+      '<div class="grid2" id="dropRow">' +
+        '<div class="pct"><input type="number" class="numbox" id="v-dropPct" ' +
+          'step="5" aria-label="Portfolio drop percent">' +
+          '<span class="unit">%</span></div>' +
+        '<div></div>' +
+      '</div>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Adds a line above the chart showing the plan after your starting ' +
+        'portfolio falls by this much today, with everything else unchanged. ' +
+        'A broadly diversified portfolio can lose a quarter to a third of ' +
+        'its value in a bad year; half your stock percentage is a fair ' +
+        'estimate of a severe loss. The main readouts keep showing the plan ' +
+        'without the drop.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
@@ -1502,7 +1657,7 @@ function buildInputs() {
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop","spouseAge",
                 "inc1Amt","inc1Age","inc1Stop","inc2Amt","inc2Age","inc2Stop",
-                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2"];
+                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2","dropPct"];
   // glideJump is a boolean gate, handled in sync below
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
@@ -1532,6 +1687,10 @@ function buildInputs() {
   const envBox = host.querySelector("#v-envOn");
   envBox.addEventListener("change", e => {
     state.envOn = e.target.checked; render(); pushHistory();
+  });
+  const dropBox = host.querySelector("#v-dropOn");
+  dropBox.addEventListener("change", e => {
+    state.dropOn = e.target.checked; render(); pushHistory();
   });
   const futBox = host.querySelector("#v-futureOn");
   futBox.addEventListener("change", e => {
@@ -1620,6 +1779,11 @@ function refreshInputs(m) {
   if (abB) abB.checked = !!state.allowBorrow;
   const evB = document.getElementById("v-envOn");
   if (evB) evB.checked = !!state.envOn;
+  const dpB = document.getElementById("v-dropOn");
+  if (dpB) dpB.checked = !!state.dropOn;
+  syncBox("v-dropPct", state.dropPct);
+  const dpRow = document.getElementById("dropRow");
+  if (dpRow) dpRow.style.display = state.dropOn ? "" : "none";
   const fuB = document.getElementById("v-futureOn");
   if (fuB) fuB.checked = !!state.futureOn;
   const gRow = document.getElementById("glideRow");
@@ -1824,6 +1988,47 @@ function futureView(sim) {
     atRet: sim.atRet * Math.pow(b, sim.R - A0) });
 }
 /* ---- end future dollars (lens) ---- */
+
+/* ---- plan table (screen readers) ----
+   The chart's own figures, written out. The chart is an SVG whose only
+   per-year readout is a hover tooltip, so a reader that can use neither gets
+   the four stats and nothing else; this is the same numbers in a form that
+   can be read. It carries the future-dollars lens because it stands in for
+   the chart, and the caption names the unit either way. Built from the same
+   rows the chart draws, so the two cannot disagree. */
+function renderPlanTable(m) {
+  const t = document.getElementById("planTable");
+  if (!t) return;
+  const v = state.futureOn ? futureView(m) : m;
+  const unit = state.futureOn
+    ? "in future dollars at " + state.inflPct + "% inflation a year"
+    : "in today's dollars";
+  const head = ["Age", "Phase", "Portfolio balance", "Spending",
+                "Guaranteed income", "Portfolio withdrawal"];
+  const body = v.rows.map(r =>
+    "<tr><td>" + r.age + "</td><td>" +
+    (r.phase === "retired" ? "retired" : "working") + "</td><td>" +
+    fmt$(r.balance) + "</td><td>" +
+    fmt$(r.spend) + "</td><td>" +
+    fmt$(r.inc || 0) + "</td><td>" +
+    fmt$(r.anchor ? 0 : r.wd) + "</td></tr>").join("");
+  t.innerHTML =
+    "<caption>Plan year by year, " + unit + " and before tax. A negative " +
+    "withdrawal is money going into the portfolio: a contribution during the " +
+    "working years, a reinvested surplus during retirement.</caption>" +
+    "<thead><tr>" + head.map(h => "<th scope=\"col\">" + h + "</th>").join("") +
+    "</tr></thead><tbody>" + body + "</tbody>";
+
+  const svg = document.getElementById("chart");
+  /* what the label claims is what the table below actually holds, so it stops
+     at the four series and does not promise the rate path or the plus-or-minus
+     one point companions that the chart may also be drawing */
+  if (svg) svg.setAttribute("aria-label",
+    "Plan chart, ages " + m.A0 + " to " + m.E + ", retirement at " + m.R +
+    ". The balance, spending, guaranteed income and portfolio withdrawal for " +
+    "each year follow as a table.");
+}
+/* ---- end plan table ---- */
 
 function renderChart(m) {
   const svg = document.getElementById("chart");
@@ -2443,6 +2648,46 @@ function render() {
       state.inflPct + "%/yr. Inputs and stats are today's dollars.";
   }
   renderChart(m);
+  renderPlanTable(m);
+
+  /* ---- portfolio-drop readout ----
+     The plan re-solved with the starting portfolio cut by dropPct today and
+     nothing else changed: the number the yearly revisit would hand back after
+     a bad year. A balance cut rather than a drawn return year, so it matches
+     to the dollar what typing the smaller portfolio would show. Frozen during
+     drags along with the warning, since its appearance moves the layout. */
+  const shockEl = document.getElementById("shockNote");
+  if (shockEl && !layoutFreeze) {
+    if (!state.dropOn || !(state.dropPct > 0) || m.nRet === 0 || !(m.S > 0)) {
+      shockEl.style.display = "none";
+    } else {
+      const keep = state.startBal;
+      let sm, sStarD = NaN, rStarD = null;
+      try {
+        state.startBal = Math.round(keep * (1 - state.dropPct / 100));
+        sm = simulate();
+        if (sm.nWork > 0) { sStarD = sm.sStar; rStarD = solveRStar(); }
+      } finally {
+        state.startBal = keep;
+      }
+      let txt = "After a " + state.dropPct + "% portfolio drop today: " +
+        "retirement spending " + fmt$(sm.S);
+      if (m.S > 0 && sm.S < m.S)
+        txt += ", a cut of " + fmtPct((1 - sm.S / m.S) * 100);
+      if (sm.nWork > 0) {
+        const parts = [];
+        if (Number.isFinite(sStarD) && sStarD > 0 && sStarD <= 1)
+          parts.push("a savings rate of " + fmtPct(sStarD * 100));
+        if (rStarD !== null && rStarD > sm.A0)
+          parts.push("retirement at " + rStarD);
+        if (parts.length)
+          txt += ". Level spending would then take " + parts.join(", or ");
+      }
+      shockEl.textContent = txt + ".";
+      shockEl.style.display = "block";
+    }
+  }
+  /* ---- end portfolio-drop readout ---- */
 
   const agesNote = document.getElementById("note-ages");
   if (agesNote) {
@@ -2472,6 +2717,22 @@ function render() {
   const warn = document.getElementById("feasWarn");
   if (layoutFreeze) {
     /* a drag is active: leave the warning exactly as it is */
+  } else if (m.nRet > 0 && m.S < 0) {
+    /* A legacy larger than the resources that have to fund it drives spending
+       below zero. The portfolio then only grows, so the balance-based
+       feasibility test above reads the plan as fine and the no-borrow rule
+       leaves it in one segment: without this branch the page would print a
+       negative Retirement spending and say nothing about it. Spending can go
+       negative only when a legacy is asking for it, since with the legacy at
+       zero the numerator is a sum of non-negative terms, so naming the legacy
+       here is safe (test/model.mjs pins that). */
+    warn.style.display = "block";
+    warn.innerHTML = "<b>Legacy is out of reach.</b> Leaving " +
+      fmt$(state.legacy) + " at age " + state.endAge + " takes more than the " +
+      "portfolio, savings, and future income provide, so retirement spending " +
+      "comes out below zero: the plan would have you paying into the " +
+      "portfolio rather than spending from it. Lower the legacy at the end " +
+      "age, or check the amount entered.";
   } else if (!m.feasible) {
     /* enriched diagnosis: how much the level plan implicitly borrows (at the
        growth rate, the model's only price), and roughly how much more money
@@ -2602,53 +2863,10 @@ function exampleLike() {
 let exampleEligible = !(location.hash && location.hash.length >= 2);
 function applyHash() {
   if (!location.hash || location.hash.length < 2) return;
-  const pairs = location.hash.slice(1).split("&");
-  for (let pass = 0; pass < 2; pass++) {      // 2 passes: age clamps depend on each other
-    for (const pair of pairs) {
-      const eq = pair.indexOf("=");
-      if (eq < 1) continue;
-      const k = pair.slice(0, eq), v = pair.slice(eq + 1);
-      if (!(k in state)) continue;
-      if (typeof DEFAULTS[k] === "boolean") { state[k] = v === "1"; continue; }
-      const n = Number(v);
-      if (!Number.isFinite(n)) continue;
-      const c = clampVal(k, n);
-      if (c !== null) state[k] = c;
-    }
-  }
-  /* rc2=<firstAge>.<codes> restores a drawn return schedule; legacy rc=
-     links carry the old narrow grid and are still read, so a link posted
-     under an earlier build keeps working. Only the wide form is written. */
-  for (const pair of pairs) {
-    const wide = pair.slice(0, 4) === "rc2=";
-    if (!wide && pair.slice(0, 3) !== "rc=") continue;
-    const m = decodeCurve(pair.slice(wide ? 4 : 3),
-                          wide ? GRID.rate : GRID.rateLegacy);
-    if (m) rateCurve = m;
-  }
-  /* tc2=<firstAge>.<codes> restores a drawn tilt curve; legacy tc= links
-     carry the old narrow grid and are still read. Only the wide form is
-     written. */
-  for (const pair of pairs) {
-    const wide = pair.slice(0, 4) === "tc2=";
-    if (!wide && pair.slice(0, 3) !== "tc=") continue;
-    const m = decodeCurve(pair.slice(wide ? 4 : 3),
-                          wide ? GRID.tilt : GRID.tiltLegacy);
-    if (m) tiltCurve = m;
-  }
+  applyParams(location.hash.slice(1).split("&"));
 }
 function scenarioLink() {
-  const parts = Object.keys(state).map(k => {
-    const v = state[k];
-    return k + "=" + (typeof v === "boolean" ? (v ? 1 : 0) : v);
-  });
-  /* both drawn curves, maximally compressed: bounded by the drawn span, at
-     most about 130 characters even for a fully drawn 60-year schedule */
-  const rc = encodeCurve(rateCurve, GRID.rate);
-  if (rc) parts.push(rc);
-  const tc = encodeCurve(tiltCurve, GRID.tilt);
-  if (tc) parts.push(tc);
-  return location.href.split("#")[0] + "#" + parts.join("&");
+  return location.href.split("#")[0] + "#" + linkParams(state).join("&");
 }
 /* ---- variable rate curve: strip renderer and painting ---- */
 const CURVE = { W: 800, H: 200, L: 44, R: 10, T: 10, B: 22 };
@@ -3151,6 +3369,12 @@ function buildReport() {
     add("Spending tilt", (state.tiltPct > 0 ? "+" : "") + state.tiltPct + "%/yr");
   if (state.inflPct !== D.inflPct) add("Inflation", state.inflPct + "%");
   if (state.allowBorrow) add("Borrowing", "allowed");
+  if (state.dropOn && state.dropPct > 0) {
+    const sk = document.getElementById("shockNote");
+    if (sk && sk.textContent)
+      add("Portfolio drop of " + state.dropPct + "%",
+          sk.textContent.replace(/^After a [^:]*: /, ""));
+  }
   if (state.spouseAge > 0) add("Spouse\u2019s age now", state.spouseAge);
   if (state.ss2Amt > 0)
     add("Social Security 2", span(state.ss2Amt, state.ss2Age, state.ss2Stop));
@@ -3199,6 +3423,20 @@ function buildReport() {
     return '<svg viewBox="' + vb + '" xmlns="http://www.w3.org/2000/svg">' +
       g.innerHTML + "</svg>";
   };
+  /* The chart's rows as a printed table, so the plan leaves the screen as
+     numbers and not only as a picture: the figures behind the curves, in a
+     form that can be checked by hand or typed into a spreadsheet. Always
+     today's dollars, matching the stats above rather than the chart, which
+     the future-dollars lens can move; the heading says so. */
+  const yearTable = sim => "<table class=\"rep-years\"><thead><tr>" +
+    ["Age", "Phase", "Portfolio balance", "Spending", "Guaranteed income",
+     "Portfolio withdrawal"].map(h => "<th>" + h + "</th>").join("") +
+    "</tr></thead><tbody>" +
+    sim.rows.map(r => "<tr><td>" + r.age + "</td><td>" +
+      (r.phase === "retired" ? "retired" : "working") + "</td><td>" +
+      fmt$(r.balance) + "</td><td>" + fmt$(r.spend) + "</td><td>" +
+      fmt$(r.inc || 0) + "</td><td>" + fmt$(r.anchor ? 0 : r.wd) +
+      "</td></tr>").join("") + "</tbody></table>";
   const dateStr = new Date().toLocaleDateString(undefined,
     { year: "numeric", month: "long", day: "numeric" });
   const unitLine = state.futureOn
@@ -3228,8 +3466,14 @@ function buildReport() {
     (state.tiltOn ? '<div class="rep-stripblk"><div class="rep-h3">Spending tilt curve</div>' +
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
+    '<div class="rep-page3">' +
+    '<div class="rep-h2">Year by year</div>' +
+    '<div class="rep-unit">Today\u2019s dollars, before tax. A negative ' +
+      'withdrawal is money going into the portfolio: a contribution during the ' +
+      'working years, a reinvested surplus during retirement.</div>' +
+    yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.25g \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.25i-shock \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
