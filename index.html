@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.25c -->
+<!-- LevelSpend build 2026.07.25e -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -493,7 +493,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25c</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25e</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -909,6 +909,24 @@ function planAt(R0, s) {
   return { A0, E, R, m, growth, disc, idx, discAt, partsAt, shapeW,
            pvInc, pvLegacy, discR, unitPV, atRet, B0grow, fvContrib,
            C, steps, segC, S, workSpend, contribution, workBal };
+}
+
+/* Runs of consecutive one-year segments, for readouts that would otherwise
+   list them one by one. An exhausted portfolio spends exactly that year's
+   income, and a spending shape stops any two such years sharing a level, so
+   the tail of a split plan can be a dozen single-year segments. Three or
+   more in a row collapse into one group; one or two stand alone, since
+   naming them is shorter than describing them. Grouping only: the wording
+   belongs to the readouts. */
+function stepRuns(steps) {
+  const out = [];
+  for (let i = 0; i < steps.length; ) {
+    let j = i;
+    while (j < steps.length && steps[j].from === steps[j].to) j++;
+    if (j - i >= 3) { out.push({ run: true, steps: steps.slice(i, j) }); i = j; }
+    else { out.push({ run: false, steps: [steps[i]] }); i++; }
+  }
+  return out;
 }
 
 /* growth factor at a fractional number of years from the start age */
@@ -1386,8 +1404,7 @@ function buildInputs() {
       '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Shift spending between early and late retirement instead of keeping it ' +
-        'level: negative spends more early, positive more later. Any year you ' +
-        'draw on the Spending tilt curve below overrides this. Retirement ' +
+        'level: negative spends more early, positive more later. Retirement ' +
         'spending above the chart then shows the first year\'s amount.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.tiltOn ? " open" : "") + '>' +
@@ -1739,11 +1756,19 @@ function renderStats(m) {
              "no retirement years")
       : stat("Retirement spending", fmt$(m.S), "var(--decum)",
              (!state.allowBorrow && m.steps && m.steps.length > 1)
-               ? "steps up at " + m.steps.slice(1).map(st => st.from).join(", ")
+               ? stepPhrase(m.steps)
                : state.tiltPct !== 0
                  ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
                    state.tiltPct + "%/yr after"
                  : ""));
+  /* "steps up at 71" for one or two, "steps up each year from 87 to 95" for
+     a run, and the two mixed where a plan has both */
+  function stepPhrase(steps) {
+    const parts = stepRuns(steps.slice(1)).map(g => g.run
+      ? "each year from " + g.steps[0].from + " to " + g.steps[g.steps.length - 1].from
+      : String(g.steps[0].from));
+    return "steps up " + (/^\d/.test(parts[0]) ? "at " : "") + parts.join(", ");
+  }
   function stat(l, v, c, sub) {
     return '<div class="stat"><span class="lbl">' + l + '</span>' +
       '<div class="num" style="color:' + c + '">' + v + '</div>' +
@@ -2468,8 +2493,10 @@ function render() {
     const bridge = minFeasibleStartBal();
     warn.innerHTML = "<b>Spending steps up.</b> Level spending after retirement would require " +
       "borrowing, so the plan holds spending as level as possible instead: " +
-      m.steps.map(st => "$" + Math.round(st.c).toLocaleString("en-US") +
-        " through age " + st.to).join(", ") + "." +
+      stepRuns(m.steps).map(g => g.run
+        ? "then rising each year through age " + g.steps[g.steps.length - 1].to
+        : "$" + Math.round(g.steps[0].c).toLocaleString("en-US") +
+          " through age " + g.steps[0].to).join(", ") + "." +
       (bridge !== null
         ? " Adding roughly $" + bridge.toLocaleString("en-US") +
           " to the portfolio today would make fully level spending feasible."
@@ -3183,7 +3210,7 @@ function buildReport() {
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.25c \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.25e \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
