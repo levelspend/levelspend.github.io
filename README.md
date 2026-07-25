@@ -63,15 +63,6 @@ point itself falls at age 62.6.
 Cash flows use an annual, end-of-year convention. The equations are
 documented in a comment inside the file.
 
-## Tests
-
-Run `node test/model.mjs`; nothing to install, and nothing extra ships with
-the page. The tests check that the plan lands on the legacy at the end age,
-that the savings-rate solve levels spending to the dollar while the
-retirement-age solve gets the closest whole year, that spending never
-outruns the portfolio when borrowing is off, and that both examples still
-report the numbers they always have.
-
 ## Feedback / Contact
 
 Active in the [Bogleheads discussion thread](https://www.bogleheads.org/forum/viewtopic.php?t=473403), which is usually the fastest way to reach me.
