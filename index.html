@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.24i -->
+<!-- LevelSpend build 2026.07.25b -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -296,13 +296,41 @@
       </div>
       <svg id="curveStrip" width="100%" viewBox="0 0 800 200"
            style="display:block; margin-top:6px; touch-action:none; cursor:crosshair;"></svg>
-      <div style="font-size:11px; color:var(--ink-soft); line-height:1.45;">
-        Draw with the mouse: each year's real return, in percent. Undrawn years
-        follow the rate settings on the left; drawn years override them. The
-        chart above recomputes as you draw. Shuffle order keeps the same drawn
-        returns and only changes their order, so any change in spending comes
-        from timing alone. Connect points fills the undrawn years between two
-        drawn ones with a straight line.
+      <textarea id="curveText" rows="2" spellcheck="false"
+        aria-label="Annual real returns in percent, one per year"
+        style="width:100%; margin-top:8px; font-family:inherit; font-size:12px;
+               font-variant-numeric:tabular-nums; color:var(--ink);
+               border:1px solid var(--rule); border-radius:3px; padding:5px 7px;
+               background:#fff; outline:none; resize:vertical;"></textarea>
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+                  font-size:12.5px; margin-top:6px;">
+        <button class="mast-btn" id="curveApply" type="button">apply series</button>
+        <span style="color:var(--ink-soft);">from age
+          <input type="number" class="numbox" id="v-curveFrom" step="1"
+            style="width:52px;" aria-label="Age of the first value in the series"></span>
+        <span style="color:var(--ink-soft);">y-axis
+          <input type="number" class="numbox" id="v-curveYMin" step="5"
+            style="width:52px;" aria-label="Return axis minimum percent"> to
+          <input type="number" class="numbox" id="v-curveYMax" step="5"
+            style="width:52px;" aria-label="Return axis maximum percent"> %</span>
+        <span id="curveMsg" style="color:var(--ink-soft);"></span>
+      </div>
+      <div style="font-size:11px; color:var(--ink-soft); line-height:1.45; margin-top:6px;">
+        Draw with the mouse, or type: the box holds the same schedule as a
+        series of annual real returns in percent, one per year, starting at
+        the age shown. Read it out, edit it, paste a new one over it, then
+        press apply series. Values are kept to a tenth of a point between
+        -60% and 69%; anything rounded, clamped, or dropped is reported next
+        to the button. Undrawn years follow the rate settings on the left;
+        drawn years override them. The chart above recomputes as you draw.
+        Spending is computed as if the whole path were known from the start,
+        so a historical series shows what foresight of those years would have
+        supported, not what someone living through them could have known to
+        spend. Shuffle order keeps the same returns and only changes their
+        order, so any change in spending comes from timing alone. Connect
+        points fills the undrawn years between two drawn ones with a straight
+        line. The y-axis range is a lens: it never changes stored values, and
+        values outside it draw pinned at the edge.
       </div>
     </div>
     <div class="card" id="tiltCard" style="padding:12px 16px 10px; margin-top:12px; display:none;">
@@ -447,8 +475,9 @@
       All amounts are in today's dollars and before tax: withdrawals from
       traditional retirement accounts are spendable only after income tax, which
       this tool does not model. Nor does it model account types, required minimum
-      distributions, or market volatility. It answers one question: given a steady
-      real return, what level of real spending is consistent with your resources.
+      distributions, or market volatility. It answers one question: given an
+      assumed return, what level of real spending is consistent with your
+      resources.
     </div>
   </div>
 </div>
@@ -459,7 +488,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.24i</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25b</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -475,6 +504,11 @@
    24%) and when 15% gets there (retirement solve, 62, three years before
    the pension). Deliberately NOT close to solved, so both buttons have
    visible work to do on first load. */
+/* ---- model ----
+   Everything from here to the end marker is the model: state, the rate
+   schedule, planAt, the two solvers. It touches no DOM and no browser API,
+   which is what lets test/model.mjs slice it out of this file and run it in
+   node. Keep it that way; the UI starts after the end marker. */
 const state = {
   startBal: 50000, salary: 75000, savePct: 15, ratePct: 4,
   startAge: 35, retAge: 57, endAge: 95,
@@ -485,6 +519,7 @@ const state = {
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true, tiltPct: 0,
   curveOn: false, tiltOn: false, tiltYMin: -3, tiltYMax: 3,
+  curveYMin: -20, curveYMax: 12,
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false, futureOn: false,
@@ -525,6 +560,132 @@ let tiltCurve = {};
 /* ---- end spending tilt curve ---- */
 let layoutFreeze = false;
 /* ---- end variable rate curve ---- */
+/* ---- drawn curve storage ----
+   Both drawn curves are sparse maps from year-end AGE to a percent, stored on
+   a fixed grid: one grid step per code, so a scenario link carries a whole
+   schedule exactly in two base-36 characters per year (1296 codes available).
+   The grids differ only in quantum and range.
+
+     rate  0.1 points, -60% to +69%   1291 codes   key rc2
+     tilt  0.1 points, -60% to +60%   1201 codes   key tc2
+
+   The rate range has to cover the historical record, because a typed series
+   is usually real history and its worst and best years reach about -45% and
+   +57%. A narrower grid would hand back a clamped sequence that still looked
+   like the one that was pasted. LEGACY grids are decoded but never written,
+   so links posted under earlier builds keep working.
+
+   Values are computed in integer code space and divided once, so a decoded
+   4.4 is 4.4 and not 4.400000000000006. */
+const GRID = {
+  rate:       { key: "rc2", q: 10, lo: -60, hi: 69 },
+  rateLegacy: { key: "rc",  q:  5, lo: -20, hi: 12 },
+  tilt:       { key: "tc2", q: 10, lo: -60, hi: 60 },
+  tiltLegacy: { key: "tc",  q: 10, lo: -10, hi: 10 },
+};
+const snapTo = (g, v) => Math.round(Math.min(g.hi, Math.max(g.lo, v)) * g.q) / g.q;
+const codeOf = (g, v) =>
+  Math.round((snapTo(g, v) - g.lo) * g.q).toString(36).padStart(2, "0");
+const valueOf = (g, cc) => {
+  const n = parseInt(cc, 36);
+  return Number.isFinite(n) && n >= 0 && n <= Math.round((g.hi - g.lo) * g.q)
+    ? (n + g.lo * g.q) / g.q : undefined;
+};
+/* anchorAge.codes, one pair per year from the year after the anchor; "--" is
+   an undrawn gap, so a sparse curve costs only the span it covers */
+function encodeCurve(map, g) {
+  const ages = Object.keys(map).map(Number).sort((a, b) => a - b);
+  if (!ages.length) return null;
+  const a0 = ages[0] - 1, a1 = ages[ages.length - 1];
+  let codes = "";
+  for (let a = a0 + 1; a <= a1; a++)
+    codes += map[a] === undefined ? "--" : codeOf(g, map[a]);
+  return g.key + "=" + a0 + "." + codes;
+}
+function decodeCurve(body, g) {
+  const dot = body.indexOf(".");
+  if (dot < 1) return null;
+  let age = Number(body.slice(0, dot));
+  if (!Number.isFinite(age)) return null;
+  const codes = body.slice(dot + 1), out = {};
+  for (let i = 0; i + 1 < codes.length; i += 2) {
+    age++;
+    const cc = codes.slice(i, i + 2);
+    if (cc === "--") continue;
+    const v = valueOf(g, cc);
+    if (v !== undefined) out[age] = v;
+  }
+  return out;
+}
+
+/* ---- typed return series ----
+   A series of annual real returns, in percent, one per year: the same drawn
+   curve read and written as text. Separators may be commas, semicolons,
+   spaces, tabs or newlines; a trailing percent sign is ignored; an empty slot
+   or "--" leaves that year undrawn, so a sparse curve survives being read out
+   and applied back.
+
+   A token that is not a number holds its place rather than collapsing the
+   list, so one typo in a thirty-year paste cannot shift every year after it.
+   Clamping and rounding are counted and returned, for the page to report:
+   changing someone's numbers silently is worse than refusing them. */
+function parseRateList(text) {
+  const s = String(text).trim();
+  const raw = s === "" ? []
+    : (s.indexOf(",") >= 0 ? s.split(",") : s.split(/[;\s]+/));
+  while (raw.length && raw[raw.length - 1].trim() === "") raw.pop();
+  const values = [], bad = [];
+  let clamped = 0, snapped = 0;
+  for (const tok of raw) {
+    const t = tok.trim();
+    if (t === "" || t === "-" || t === "--") { values.push(undefined); continue; }
+    const v = Number(t.replace(/%$/, ""));
+    if (!Number.isFinite(v)) { bad.push(t); values.push(undefined); continue; }
+    const snapped1 = snapTo(GRID.rate, v);
+    if (v < GRID.rate.lo || v > GRID.rate.hi) clamped++;
+    else if (Math.abs(snapped1 - v) > 1e-9) snapped++;
+    values.push(snapped1);
+  }
+  return { values, bad, clamped, snapped };
+}
+/* Replaces the drawn curve with the series, first value at startAge: the text
+   box shows the whole schedule, so applying it makes the curve equal to what
+   the box says. Years outside the plan's span keep their place in the series
+   and are counted as dropped. */
+function applyRateList(values, startAge) {
+  const A0 = Number.isFinite(state.startAge) ? state.startAge : 20;
+  const E = Math.max(Number.isFinite(state.endAge) ? state.endAge : A0 + 1, A0 + 1);
+  const from = Math.round(Number.isFinite(startAge) ? startAge : A0 + 1);
+  rateCurve = {};
+  let applied = 0, dropped = 0;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] === undefined) continue;
+    const age = from + i;
+    if (age <= A0 || age > E) { dropped++; continue; }
+    rateCurve[age] = values[i];
+    applied++;
+  }
+  return { applied, dropped, from };
+}
+function formatRateList(map) {
+  const ages = Object.keys(map).map(Number).sort((a, b) => a - b);
+  if (!ages.length) return { text: "", from: null };
+  const a0 = ages[0], a1 = ages[ages.length - 1], parts = [];
+  for (let a = a0; a <= a1; a++)
+    parts.push(map[a] === undefined ? "--" : map[a].toFixed(1));
+  return { text: parts.join(", "), from: a0 };
+}
+/* The one steady rate that compounds to the same cumulative growth as a
+   schedule over n years: the number the tool's single-rate input would have
+   to hold to end up in the same place. Not the arithmetic mean of the
+   returns, which is always higher and does not compound to the same total. */
+function annualizedRate(sched, n) {
+  if (n <= 0) return NaN;
+  let prod = 1;
+  for (let k = 1; k <= n; k++) prod *= 1 + sched.rateForYearEnding(k);
+  return prod <= 0 ? NaN : (Math.pow(prod, 1 / n) - 1) * 100;
+}
+
 function buildSchedule(A0, E, Rkink) {
   const r0 = state.ratePct / 100;
   const n = E - A0;
@@ -555,16 +716,33 @@ function buildSchedule(A0, E, Rkink) {
   return { growth, disc, rateForYearEnding, n };
 }
 
-function simulate() {
-  const s = state.savePct / 100;
-  /* defensive coherence: clamp the age ordering here too, so a scenario link
+/* ---------------- model core ----------------
+   planAt(R, s) is the model, and it is the only copy of it. Both the chart
+   and both solvers read their answers out of this one function, so a change
+   to the math cannot reach one of them and miss another.
+
+   It used to be two functions, and they had drifted apart: the solvers
+   aimed at the fully level plan while the chart drew the no-borrow plan, so
+   in a stepped scenario "solve for level spending" would name a savings
+   rate that left a visible step at the retirement age. The solvers now aim
+   at the plan the chart draws.
+
+   Retirement payments sit on the R+k grid, k = 1..m. For the whole-year R
+   the tool plans in, that grid is exactly the ages R+1 through E. A
+   fractional R (solveRStarExact, which locates the crossing between two
+   birthdays) rides the same grid with growth and discount factors
+   interpolated between whole-year nodes, while income-stream PVs stay on
+   the whole-year grid: a sub-year approximation that feeds a readout and
+   never a plan. */
+function planAt(R0, s) {
+  /* defensive coherence: clamp the age ordering here, so a scenario link
      or any non-interactive state load can never yield negative phase lengths
      (which would poison the math into NaN). Interactive edits are already
      clamped; this is the belt-and-suspenders for every other entry path. */
   const A0 = Number.isFinite(state.startAge) ? state.startAge : 20;
   const E  = Math.max(Number.isFinite(state.endAge) ? state.endAge : A0 + 1, A0 + 1);
-  const R  = Math.min(Math.max(Number.isFinite(state.retAge) ? state.retAge : A0, A0), E);
-  const nWork = R - A0, nRet = E - R;
+  const R  = Math.min(Math.max(Number.isFinite(R0) ? R0 : A0, A0), E);
+  const m  = Math.max(0, Math.round(E - R));   // retirement payments, at R+1..R+m
   const contribution = state.salary * s;
   const workSpend = state.salary * (1 - s);
   const infl = state.inflPct / 100;
@@ -575,16 +753,16 @@ function simulate() {
      year-end age a applies to the year ending at a, and year 0 has no
      cell, so C stays first-year spending. With nothing drawn in the active
      range this falls through to Math.pow, bit-identical to the tilt alone. */
+  const Rt = Math.round(R);                    // tilt cells are keyed by whole age
   const shapeW = (() => {
-    const nR0 = Math.max(0, Math.round(E - R));
     let drawn = false;
     if (state.tiltOn)
-      for (let j = 1; j < nR0; j++)
-        if (tiltCurve[R + 1 + j] !== undefined) { drawn = true; break; }
+      for (let j = 1; j < m; j++)
+        if (tiltCurve[Rt + 1 + j] !== undefined) { drawn = true; break; }
     if (!drawn) return j => Math.pow(1 + g, j);
     const w = [1];
-    for (let j = 1; j < nR0; j++) {
-      const t = tiltCurve[R + 1 + j];
+    for (let j = 1; j < m; j++) {
+      const t = tiltCurve[Rt + 1 + j];
       w[j] = w[j - 1] * (1 + (t !== undefined ? t / 100 : g));
     }
     return j => w[j] !== undefined ? w[j] : Math.pow(1 + g, j);
@@ -595,7 +773,12 @@ function simulate() {
      disc[k] = PV today of $1 at age A0+k;  growth[k] = FV at A0+k of $1 today. */
   const { growth, disc } = buildSchedule(A0, E, R);
   const idx = age => age - A0;                 // table index for an age
-  const discAt = age => disc[idx(age)];        // PV today of $1 at that age
+  const discAt = age => {              // PV today of $1 at a possibly fractional age
+    const t = idx(age);
+    const lo = Math.floor(t), hi = Math.ceil(t);
+    if (lo === hi) return disc[lo];
+    return disc[lo] + (disc[hi] - disc[lo]) * (t - lo);   // between whole-year nodes
+  };
 
   /* Spouse timeline: with the spouse's start age entered, slot-2 ages are
      the SPOUSE's own ages; sOff converts them to the primary timeline
@@ -617,7 +800,7 @@ function simulate() {
   const pvStream = (amt, start, stop, cola) => {
     if (amt === 0 || start > stop) return 0;
     let pv = 0;
-    for (let age = start; age <= stop; age++) {
+    for (let age = Math.ceil(start); age <= stop; age++) {
       const real = cola ? amt : amt * Math.pow(1 + infl, -(age - A0));
       pv += real * discAt(age);
     }
@@ -633,18 +816,27 @@ function simulate() {
               + pvStream(state.inc1Amt, inc1Start, inc1StopA, state.inc1Cola)
               + pvStream(state.inc2Amt, inc2Start, inc2StopA, state.inc2Cola);
 
-  const rows = [{ age: A0, balance: state.startBal, phase: "work", anchor: true,
-                  wd: -contribution, inc: 0, pen: 0, ss: 0,
-                  p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend }];
+  /* Working phase, year by year: this is the balance line the chart draws,
+     so it stays a plain iteration. workBal[k] is the balance at age A0+k.
+     A fractional R finishes with a stub: contributions stop at the last
+     whole year, and the balance grows on to the fractional point. */
+  const Rw = Math.floor(R);
+  const workBal = [state.startBal];
   let bal = state.startBal;
-  for (let age = A0 + 1; age <= R; age++) {
+  for (let age = A0 + 1; age <= Rw; age++) {
     const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;   // this year's rate
     bal = bal * (1 + rk) + contribution;
-    rows.push({ age, balance: bal, phase: "work",
-                wd: -contribution, inc: 0, pen: 0, ss: 0,
-                p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend });
+    workBal.push(bal);
   }
-  const atRet = bal;
+  const growthR = R > Rw ? growthAtFrac(growth, idx(R)) : growth[idx(R)];
+  const atRet = R > Rw ? bal * growthR / growth[idx(Rw)] : bal;
+
+  /* the same retirement-date balance, split into its two closed-form parts,
+     so s* can be inverted without re-running the accumulation:
+       atRet = B0grow + salary * s * fvContrib */
+  let fvContrib = 0;
+  for (let age = A0 + 1; age <= Rw; age++) fvContrib += growthR / growth[idx(age)];
+  const B0grow = state.startBal * growthR;
 
   /* Level (tilted) retirement spending, solved by PV balance:
      C * PV(unit tilted spending stream) = atRet + pvInc - PV(legacy).
@@ -653,8 +845,8 @@ function simulate() {
      year ending at age R+1+j is C*(1+g)^j. */
   const discR = discAt(R);                       // PV today of $1 at retirement
   let unitPV = 0;                                // PV today of a unit shaped stream
-  for (let j = 0; j < nRet; j++)
-    unitPV += shapeW(j, R) * discAt(R + 1 + j);
+  for (let j = 0; j < m; j++)
+    unitPV += shapeW(j) * discAt(R + 1 + j);
   const pvLegacy = state.legacy * discAt(E);
   const C = unitPV > 0 ? (atRet * discR + pvInc - pvLegacy) / unitPV : 0;
 
@@ -685,31 +877,104 @@ function simulate() {
      segment is a closed-form amortization; the whole path never borrows
      and still lands on the legacy exactly. */
   let steps = [], segC = {};
-  if (!state.allowBorrow && nRet > 0) {
-    let sAge = R, Bs = atRet;
-    while (sAge < E) {
-      let unit = 0, incPV = 0, bestC = Infinity, bestF = sAge + 1;
-      for (let f = sAge + 1; f <= E; f++) {
-        unit  += shapeW(f - R - 1, R) * discAt(f);
-        incPV += partsAt(f).inc * discAt(f);
-        const target = f === E ? state.legacy : 0;
-        const c = (Bs * discAt(sAge) + incPV - target * discAt(f)) / unit;
-        if (c <= bestC + 1e-9) { bestC = c; bestF = f; }
+  if (!state.allowBorrow && m > 0) {
+    let k0 = 0, Bs = atRet;
+    while (k0 < m) {
+      let unit = 0, incPV = 0, bestC = Infinity, bestK = k0 + 1;
+      for (let f = k0 + 1; f <= m; f++) {
+        unit  += shapeW(f - 1) * discAt(R + f);
+        incPV += partsAt(R + f).inc * discAt(R + f);
+        const target = f === m ? state.legacy : 0;
+        const c = (Bs * discAt(R + k0) + incPV - target * discAt(R + f)) / unit;
+        if (c <= bestC + 1e-9) { bestC = c; bestK = f; }
       }
-      steps.push({ from: sAge + 1, to: bestF, c: bestC });
-      for (let a = sAge + 1; a <= bestF; a++) segC[a] = bestC;
-      Bs = bestF === E ? state.legacy : 0;
-      sAge = bestF;
+      steps.push({ from: R + k0 + 1, to: R + bestK, c: bestC });
+      for (let f = k0 + 1; f <= bestK; f++) segC[R + f] = bestC;
+      /* a segment ends with the balance exactly at zero, which is where the
+         next one starts; the last one ends on the legacy instead, and that
+         is already in its own amortization (target, above) */
+      Bs = 0;
+      k0 = bestK;
     }
   }
+  /* first-year retirement spending as drawn: the first segment's level when
+     the no-borrow rule splits the plan, the level amount otherwise */
+  const S = (!state.allowBorrow && steps.length) ? steps[0].c : C;
 
+  return { A0, E, R, m, growth, disc, idx, discAt, partsAt, shapeW,
+           pvInc, pvLegacy, discR, unitPV, atRet, B0grow, fvContrib,
+           C, steps, segC, S, workSpend, contribution, workBal };
+}
+
+/* growth factor at a fractional number of years from the start age */
+function growthAtFrac(growth, t) {
+  const lo = Math.floor(t), hi = Math.ceil(t);
+  if (lo === hi) return growth[lo];
+  return growth[lo] + (growth[hi] - growth[lo]) * (t - lo);
+}
+
+/* s*: the savings rate at which working spending equals the FIRST YEAR of
+   the plan the chart draws.
+
+   A fully level plan (borrowing allowed, or never needed) puts that first
+   year at C, which is linear in s, so one division answers it exactly. When
+   the no-borrow rule splits the plan into segments, the drawn first year is
+   the first segment's level instead. That is still strictly increasing in s
+   (each candidate window's level is affine and increasing in the
+   retirement-date balance, and a running minimum of increasing functions
+   increases) while working spending strictly falls, so the two cross exactly
+   once and bisection finds it. Aiming at C in that case would name a rate
+   that visibly fails to level the drawn plan.
+
+   Non-finite and out-of-range answers pass straight through from the closed
+   form, so the readouts keep their existing wording for the degenerate
+   cases: minus infinity still means the resources already suffice, NaN and
+   plus infinity still name no rate at all. */
+function solveSStar(p) {
+  const k1 = (p.B0grow * p.discR + p.pvInc - p.pvLegacy) / p.unitPV;   // C at s = 0
+  const k2 = (state.salary * p.fvContrib * p.discR) / p.unitPV;        // dC/ds per unit s
+  const closed = p.unitPV > 0 ? (state.salary - k1) / (state.salary + k2) : NaN;
+  if (!Number.isFinite(closed) || state.allowBorrow) return closed;
+  if (planAt(p.R, Math.min(1, Math.max(0, closed))).steps.length <= 1)
+    return closed;                       // one segment: the closed form is exact
+  const gapAt = ss => {
+    const q = planAt(p.R, ss);
+    return q.S - q.workSpend;
+  };
+  if (!(gapAt(0) < 0 && gapAt(1) > 0)) return closed;   // no crossing inside [0,1]
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (gapAt(mid) < 0) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+function simulate() {
+  const s = state.savePct / 100;
+  /* the tool plans in whole years, and chart rows are keyed by whole age; a
+     crafted scenario link could still carry a fractional retirement age */
+  const p = planAt(Math.round(state.retAge), s);
+  const { A0, E, R, m: nRet, growth, idx, partsAt, shapeW,
+          atRet, C, steps, segC, S, workSpend, contribution, workBal } = p;
+  const nWork = R - A0;
+
+  const rows = [{ age: A0, balance: state.startBal, phase: "work", anchor: true,
+                  wd: -contribution, inc: 0, pen: 0, ss: 0,
+                  p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend }];
+  for (let age = A0 + 1; age <= R; age++)
+    rows.push({ age, balance: workBal[idx(age)], phase: "work",
+                wd: -contribution, inc: 0, pen: 0, ss: 0,
+                p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend });
+
+  let bal = atRet;
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
   for (let age = R + 1; age <= E; age++) {
     const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;
     const { p1, p2, s1, s2, i1, i2, inc } = partsAt(age);
     const pen = p1 + p2, ss = s1 + s2;
     const level = (!state.allowBorrow && segC[age] !== undefined) ? segC[age] : C;
-    const spendYr = level * shapeW(age - R - 1, R);
+    const spendYr = level * shapeW(age - R - 1);
     const wd = spendYr - inc;
     bal = bal * (1 + rk) - wd;
     if (bal < minBal) { minBal = bal; minAge = age; }
@@ -721,123 +986,38 @@ function simulate() {
                 wd, inc, pen, ss, p1, p2, s1, s2, i1, i2, spend: spendYr });
   }
   const feasible = minBal >= -1e-6;
-  const S_first = (!state.allowBorrow && steps.length) ? steps[0].c : C;
-
-  /* s* : the savings rate making working spending == first-year retirement
-     spending. Retirement spending is linear in s through atRet, so this
-     inverts in closed form. atRet = B0*growth[nWork] + salary*s*FV(contrib),
-     where FV(contrib) sums this schedule's growth of a unit yearly contribution. */
-  let fvContrib = 0;
-  for (let age = A0 + 1; age <= R; age++) fvContrib += growth[idx(R)] / growth[idx(age)];
-  const B0grow = state.startBal * growth[idx(R)];
-  // C(s) = ((B0grow + salary*s*fvContrib)*discR + pvInc - pvLegacy)/unitPV
-  // set C(s) = salary*(1-s):
-  const k1 = (B0grow * discR + pvInc - pvLegacy) / unitPV;   // C at s=0
-  const k2 = (state.salary * fvContrib * discR) / unitPV;    // dC/ds * ... per unit s
-  const sStar = unitPV > 0 ? (state.salary - k1) / (state.salary + k2) : NaN;
 
   if (nWork === 0) {
     rows[0].phase = "retired";
-    rows[0].spend = S_first;
+    rows[0].spend = S;
     rows[0].wd = 0;      /* anchor is a point in time; the first year's flows
                             are on the next row */
     rows[0].inc = 0;
   }
 
-  return { rows, atRet, S: S_first, workSpend, replacement: S_first / workSpend, sStar, pvInc,
-           steps, R, E, nWork, nRet, A0, feasible, minBal, minAge, negFrom, negTo };
+  /* s* is read by the savings-rate readout and its button, and skipped by
+     the feasibility search, so it is computed only when it is asked for */
+  return { rows, atRet, S, workSpend, replacement: S / workSpend,
+           get sStar() { return solveSStar(p); },
+           pvInc: p.pvInc, steps, R, E, nWork, nRet, A0,
+           feasible, minBal, minAge, negFrom, negTo };
 }
 
+/* The step at the retirement age, measured against the plan the chart
+   draws: first-year retirement spending minus working spending. Zero means
+   the two spending lines meet with no step. R may be fractional. */
 function levelGapAt(R) {
-  const s = state.savePct / 100;
-  const A0 = state.startAge;
-  const E = state.endAge;
-  const infl = state.inflPct / 100;
-  const g = state.tiltPct / 100;
-  /* ---- spending tilt curve (engine) ---- */
-  const shapeW = (() => {
-    const Rr = Math.round(R);
-    const nR0 = Math.max(0, Math.round(E - Rr));
-    let drawn = false;
-    if (state.tiltOn)
-      for (let j = 1; j < nR0; j++)
-        if (tiltCurve[Rr + 1 + j] !== undefined) { drawn = true; break; }
-    if (!drawn) return j => Math.pow(1 + g, j);
-    const w = [1];
-    for (let j = 1; j < nR0; j++) {
-      const t = tiltCurve[Rr + 1 + j];
-      w[j] = w[j - 1] * (1 + (t !== undefined ? t / 100 : g));
-    }
-    return j => w[j] !== undefined ? w[j] : Math.pow(1 + g, j);
-  })();
-  /* ---- end spending tilt curve (engine) ---- */
-
-  /* R may be non-integer (R* bisection). Build the schedule to E; index by
-     years-from-A0, allowing fractional R for the retirement-phase sums. */
-  const { growth, disc } = buildSchedule(A0, E, R);
-  const idx = age => age - A0;
-  const discAt = age => {                      // PV today of $1 at (possibly fractional) age
-    const t = idx(age);
-    const lo = Math.floor(t), hi = Math.ceil(t);
-    if (lo === hi) return disc[lo];
-    return disc[lo] + (disc[hi] - disc[lo]) * (t - lo);   // linear interp between whole-year nodes
-  };
-
-  const sOff = state.spouseAge > 0 ? A0 - state.spouseAge : 0;
-  const penStart  = Math.max(state.penAge,  R) + 1;
-  const ssStart   = Math.max(state.ssAge,   R) + 1;
-  const pen2Start = Math.max(state.pen2Age + sOff, R) + 1;
-  const ss2Start  = Math.max(state.ss2Age  + sOff, R) + 1;
-  const inc1Start = Math.max(state.inc1Age, R) + 1;   // own timeline: no sOff
-  const inc2Start = Math.max(state.inc2Age, R) + 1;
-  const stopOf = raw => raw > 0 ? Math.min(raw, E) : E;
-  const stopOfS = raw => raw > 0 ? Math.min(raw + sOff, E) : E;
-  const pvStream = (amt, start, stop, cola) => {
-    if (amt === 0 || start > stop) return 0;
-    let pv = 0;
-    for (let age = Math.ceil(start); age <= stop; age++) {
-      const real = cola ? amt : amt * Math.pow(1 + infl, -(age - A0));
-      pv += real * discAt(age);
-    }
-    return pv;
-  };
-  const pvInc = pvStream(state.penAmt, penStart, stopOf(state.penStop), state.penCola)
-              + pvStream(state.ssAmt, ssStart, stopOf(state.ssStop), true)
-              + pvStream(state.pen2Amt, pen2Start, stopOfS(state.pen2Stop), state.pen2Cola)
-              + pvStream(state.ss2Amt, ss2Start, stopOfS(state.ss2Stop), true)
-              + pvStream(state.inc1Amt, inc1Start, stopOf(state.inc1Stop), state.inc1Cola)
-              + pvStream(state.inc2Amt, inc2Start, stopOf(state.inc2Stop), state.inc2Cola);
-
-  // FV of portfolio + contributions to R, via the schedule
-  const gR = growth[idx(Math.round(R))] !== undefined
-    ? growthAtFrac(growth, idx(R)) : growth[growth.length - 1];
-  const BR = state.startBal * gR + state.salary * s * fvContribTo(growth, idx, A0, R);
-
-  const nR = E - R;
-  const discR = discAt(R);
-  let unitPV = 0;
-  for (let j = 0; j < Math.round(nR); j++) unitPV += shapeW(j) * discAt(R + 1 + j);
-  const pvLegacy = state.legacy * discAt(E);
-  const C = unitPV > 0 ? (BR * discR + pvInc - pvLegacy) / unitPV : 0;
-  return C - state.salary * (1 - s);
-}
-/* helpers for fractional R in levelGapAt */
-function growthAtFrac(growth, t) {
-  const lo = Math.floor(t), hi = Math.ceil(t);
-  if (lo === hi) return growth[lo];
-  return growth[lo] + (growth[hi] - growth[lo]) * (t - lo);
-}
-function fvContribTo(growth, idx, A0, R) {
-  let fv = 0;
-  const gR = growthAtFrac(growth, idx(R));
-  for (let age = A0 + 1; age <= Math.round(R); age++) fv += gR / growth[idx(age)];
-  return fv;
+  const p = planAt(R, state.savePct / 100);
+  return p.S - p.workSpend;
 }
 
 /* Latest retirement age at which retirement spending does not exceed
    working spending (the floor of the exact level point). Errs toward a
    small step DOWN at retirement rather than up, matching the usual direction
-   of retirement spending. Clamped at the start age. */
+   of retirement spending. Clamped at the start age. The gap it scans is the
+   one the chart shows, so in a stepped scenario this answers the age that
+   levels the drawn plan, not the age that would level a plan the no-borrow
+   rule forbids. */
 function solveRStar() {
   for (let R = state.startAge; R <= state.endAge - 1; R++)
     if (levelGapAt(R) >= -1e-6) {
@@ -852,8 +1032,11 @@ function solveRStar() {
   return null;
 }
 
-/* exact (non-integer) level crossing within (Rint-1, Rint); levelGapAt is
-   smooth in R, so plain bisection converges fast */
+/* Exact (non-integer) level crossing within (Rint-1, Rint). The gap rises
+   with R and is continuous within a segmentation regime, so plain bisection
+   converges fast. Nothing on the page calls this: the readouts report whole
+   years. It is kept because it is the honest answer to "when exactly", and
+   costs nine lines to keep working. */
 function solveRStarExact(Rint) {
   let lo = Rint - 1, hi = Rint;
   for (let i = 0; i < 40; i++) {
@@ -862,12 +1045,13 @@ function solveRStarExact(Rint) {
   }
   return hi;
 }
+/* ---- end model ---- */
 
-const fmt$ = v => !Number.isFinite(v) ? "\u2014"
+const fmt$ = v => !Number.isFinite(v) ? "\u2013"
   : (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
 /* the percent counterpart of fmt$: no readout prints a non-finite number,
    whatever the caller hands it */
-const fmtPct = v => !Number.isFinite(v) ? "\u2014" : v.toFixed(1) + "%";
+const fmtPct = v => !Number.isFinite(v) ? "\u2013" : v.toFixed(1) + "%";
 function fmtAxis(v) {
   const a = Math.abs(v), s = v < 0 ? "−" : "";
   if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
@@ -926,6 +1110,12 @@ function clampVal(key, v) {
      floored at -20%. rateMid2 is excluded: its negative is the coupled
      sentinel. Money fields keep the non-negative fallthrough below. */
   if (["ratePct","rateEnd","rateMid"].includes(key)) return Math.max(v, -20);
+  if (key === "curveYMin")
+    return Math.min(Math.max(Math.round(v), GRID.rate.lo),
+                    Math.min(state.curveYMax - 1, GRID.rate.hi - 1));
+  if (key === "curveYMax")
+    return Math.max(Math.min(Math.round(v), GRID.rate.hi),
+                    Math.max(state.curveYMin + 1, GRID.rate.lo + 1));
   if (key === "tiltYMin")
     return Math.min(Math.max(Math.round(v), -60), Math.min(state.tiltYMax - 1, 59));
   if (key === "tiltYMax")
@@ -1106,7 +1296,7 @@ function buildInputs() {
     '<div class="dv-row">' +
       numField("retAge", "Retirement age", 1) +
       '<button class="solve solve-ret" id="setRStar" ' +
-        'title="Sets the retirement age so spending stays level through the end age, at the current savings rate">' +
+        'title="Sets the retirement age at which spending comes closest to level through the end age, at the current savings rate">' +
         'solve for level spending' +
         '<span class="solve-val" id="rStar"></span></button>' +
     '</div>' +
@@ -1255,8 +1445,9 @@ function buildInputs() {
       '<label class="adv-check"><input type="checkbox" id="v-curveOn"> ' +
         'Draw a per-year return schedule</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Adds a drawing strip under the chart. Drawn years override the rate ' +
-        'settings above; undrawn years still follow them.</div>' +
+        'Adds a strip under the chart where each year\u2019s return can be ' +
+        'drawn or typed. Drawn years override the rate settings above; ' +
+        'undrawn years still follow them.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.envOn ? " open" : "") + '>' +
       '<summary>Rate sensitivity</summary>' +
@@ -1530,16 +1721,16 @@ function renderStats(m) {
   const saveYr = state.salary * state.savePct / 100;
   document.getElementById("stats").innerHTML =
     (m.nWork === 0
-      ? stat("Savings", "—", "var(--ink-soft)", "no working years")
+      ? stat("Savings", "–", "var(--ink-soft)", "no working years")
       : stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
              fmt$(saveYr / 12) + "/mo")) +
     stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
     (m.nWork === 0
-      ? stat("Working spending", "—", "var(--ink-soft)", "no working years")
+      ? stat("Working spending", "–", "var(--ink-soft)", "no working years")
       : stat("Working spending", fmt$(m.workSpend), "var(--accum)",
              "income − savings")) +
     (m.nRet === 0
-      ? stat("Retirement spending", "—", "var(--ink-soft)",
+      ? stat("Retirement spending", "–", "var(--ink-soft)",
              "no retirement years")
       : stat("Retirement spending", fmt$(m.S), "var(--decum)",
              (!state.allowBorrow && m.steps && m.steps.length > 1)
@@ -2390,52 +2581,25 @@ function applyHash() {
       if (c !== null) state[k] = c;
     }
   }
-  /* rc=<firstAge>.<codes> restores a drawn curve: two base-36 characters per
-     year starting the year after firstAge; "--" is an undrawn gap.
-     code = (rate + 20) / 0.2, exact at the 0.2% drawing quantum. */
+  /* rc2=<firstAge>.<codes> restores a drawn return schedule; legacy rc=
+     links carry the old narrow grid and are still read, so a link posted
+     under an earlier build keeps working. Only the wide form is written. */
   for (const pair of pairs) {
-    if (pair.slice(0, 3) !== "rc=") continue;
-    rateCurve = {};
-    const body = pair.slice(3);
-    const dot = body.indexOf(".");
-    if (dot < 1) continue;
-    let age = Number(body.slice(0, dot));
-    if (!Number.isFinite(age)) continue;
-    const codes = body.slice(dot + 1);
-    for (let i = 0; i + 1 < codes.length; i += 2) {
-      age++;
-      const cc = codes.slice(i, i + 2);
-      if (cc === "--") continue;
-      const n = parseInt(cc, 36);
-      if (Number.isFinite(n) && n >= 0 && n <= 160)
-        rateCurve[age] = (n - 100) / 5;
-    }
+    const wide = pair.slice(0, 4) === "rc2=";
+    if (!wide && pair.slice(0, 3) !== "rc=") continue;
+    const m = decodeCurve(pair.slice(wide ? 4 : 3),
+                          wide ? GRID.rate : GRID.rateLegacy);
+    if (m) rateCurve = m;
   }
-  /* tc2=<firstAge>.<codes> restores a drawn tilt curve: two base-36
-     characters per year starting the year after firstAge; "--" is an
-     undrawn gap. code = (change + 60) * 10, exact at the 0.1% quantum,
-     which covers -60% to +60% in the same two characters. Legacy tc=
-     links carry the old +10 offset over -10% to +10% and are still read,
-     so a posted link keeps working; only the wide form is written now. */
+  /* tc2=<firstAge>.<codes> restores a drawn tilt curve; legacy tc= links
+     carry the old narrow grid and are still read. Only the wide form is
+     written. */
   for (const pair of pairs) {
     const wide = pair.slice(0, 4) === "tc2=";
     if (!wide && pair.slice(0, 3) !== "tc=") continue;
-    tiltCurve = {};
-    const body = pair.slice(wide ? 4 : 3);
-    const dot = body.indexOf(".");
-    if (dot < 1) continue;
-    let age = Number(body.slice(0, dot));
-    if (!Number.isFinite(age)) continue;
-    const codes = body.slice(dot + 1);
-    const nMax = wide ? 1200 : 200, off = wide ? 600 : 100;
-    for (let i = 0; i + 1 < codes.length; i += 2) {
-      age++;
-      const cc = codes.slice(i, i + 2);
-      if (cc === "--") continue;
-      const n = parseInt(cc, 36);
-      if (Number.isFinite(n) && n >= 0 && n <= nMax)
-        tiltCurve[age] = (n - off) / 10;
-    }
+    const m = decodeCurve(pair.slice(wide ? 4 : 3),
+                          wide ? GRID.tilt : GRID.tiltLegacy);
+    if (m) tiltCurve = m;
   }
 }
 function scenarioLink() {
@@ -2443,42 +2607,33 @@ function scenarioLink() {
     const v = state[k];
     return k + "=" + (typeof v === "boolean" ? (v ? 1 : 0) : v);
   });
-  /* drawn curve, maximally compressed: bounded by the drawn span, at most
-     about 130 characters even for a fully drawn 60-year schedule */
-  const cAges = Object.keys(rateCurve).map(Number).sort((a, b) => a - b);
-  if (cAges.length) {
-    const a0 = cAges[0] - 1, a1 = cAges[cAges.length - 1];
-    let codes = "";
-    for (let a = a0 + 1; a <= a1; a++) {
-      const v = rateCurve[a];
-      codes += v === undefined ? "--"
-        : Math.min(160, Math.max(0, Math.round((v + 20) * 5)))
-            .toString(36).padStart(2, "0");
-    }
-    parts.push("rc=" + a0 + "." + codes);
-  }
-  const tAges = Object.keys(tiltCurve).map(Number).sort((a, b) => a - b);
-  if (tAges.length) {
-    const a0 = tAges[0] - 1, a1 = tAges[tAges.length - 1];
-    let codes = "";
-    for (let a = a0 + 1; a <= a1; a++) {
-      const v = tiltCurve[a];
-      codes += v === undefined ? "--"
-        : Math.min(1200, Math.max(0, Math.round((v + 60) * 10)))
-            .toString(36).padStart(2, "0");
-    }
-    parts.push("tc2=" + a0 + "." + codes);
-  }
+  /* both drawn curves, maximally compressed: bounded by the drawn span, at
+     most about 130 characters even for a fully drawn 60-year schedule */
+  const rc = encodeCurve(rateCurve, GRID.rate);
+  if (rc) parts.push(rc);
+  const tc = encodeCurve(tiltCurve, GRID.tilt);
+  if (tc) parts.push(tc);
   return location.href.split("#")[0] + "#" + parts.join("&");
 }
 /* ---- variable rate curve: strip renderer and painting ---- */
-const CURVE = { W: 800, H: 200, L: 44, R: 10, T: 10, B: 22, yMin: -20, yMax: 12 };
+const CURVE = { W: 800, H: 200, L: 44, R: 10, T: 10, B: 22 };
 function curveGeom() {
   const A0 = state.startAge, E = Math.max(state.endAge, A0 + 1);
+  const yMin = state.curveYMin, yMax = state.curveYMax;
   const x = a => CURVE.L + (a - A0) / (E - A0) * (CURVE.W - CURVE.L - CURVE.R);
-  const y = v => CURVE.T + (CURVE.yMax - v) / (CURVE.yMax - CURVE.yMin)
-                 * (CURVE.H - CURVE.T - CURVE.B);
-  return { A0, E, x, y };
+  const y = v => CURVE.T + (yMax - Math.max(yMin, Math.min(yMax, v)))
+                 / (yMax - yMin) * (CURVE.H - CURVE.T - CURVE.B);
+  return { A0, E, x, y, yMin, yMax };
+}
+/* gridline step: about six lines across whatever window the lens is set to.
+   The default -20 to 12 window keeps the 5-point lines it has always had. */
+function curveTicks(yMin, yMax) {
+  const span = yMax - yMin;
+  const step = span <= 40 ? 5 : span <= 80 ? 10 : span <= 160 ? 20 : 50;
+  const out = [];
+  for (let v = Math.ceil(yMin / step) * step; v <= yMax; v += step) out.push(v);
+  if (yMin < 0 && yMax > 0 && out.indexOf(0) < 0) out.push(0);
+  return out;
 }
 function renderCurveStrip() {
   const card = document.getElementById("curveCard");
@@ -2489,7 +2644,7 @@ function renderCurveStrip() {
   const sched = buildSchedule(g.A0, g.E, state.retAge);
   const n = g.E - g.A0;
   let out = "";
-  for (const v of [-20, -15, -10, -5, 0, 5, 10]) {
+  for (const v of curveTicks(g.yMin, g.yMax)) {
     const yy = g.y(v);
     out += '<line x1="' + CURVE.L + '" x2="' + (CURVE.W - CURVE.R) +
       '" y1="' + yy + '" y2="' + yy + '" stroke="#E3E6EA"' +
@@ -2503,22 +2658,37 @@ function renderCurveStrip() {
   out += '<line x1="' + g.x(state.retAge) + '" x2="' + g.x(state.retAge) +
     '" y1="' + CURVE.T + '" y2="' + (CURVE.H - CURVE.B) +
     '" stroke="#6B7280" stroke-dasharray="3 3" opacity="0.6"/>';
-  let sum = 0;
   for (let k = 1; k <= n; k++) {
     const age = g.A0 + k;
     const drawn = rateCurve[age] !== undefined;
     const v = sched.rateForYearEnding(k) * 100;
-    sum += v;
-    const yy = g.y(Math.max(CURVE.yMin, Math.min(CURVE.yMax, v)));
+    const yy = g.y(v);                       // g.y pins outside the window
     out += '<line x1="' + g.x(age - 1) + '" x2="' + g.x(age) +
       '" y1="' + yy + '" y2="' + yy + '" stroke-width="3" stroke="' +
       (drawn ? "#374151" : "#B9BEC6") + '"/>';
   }
   svg.innerHTML = out;
+  /* The summary is the rate that compounds to the same place, not the
+     average of the returns: for a real historical series those differ by
+     more than a point, and this one is the number the single-rate input
+     above would have to hold to reach the same portfolio. */
   const mean = document.getElementById("curveMean");
-  if (mean) mean.textContent = n > 0
-    ? "effective mean " + (sum / n).toFixed(1) + "%/yr over " + n + " years"
+  const ann = annualizedRate(sched, n);
+  if (mean) mean.textContent = n > 0 && Number.isFinite(ann)
+    ? "same as a steady " + ann.toFixed(1) + "%/yr over " + n + " years"
     : "";
+  /* the text box holds the drawn schedule; left alone while it has focus,
+     so typing is never overwritten mid-edit */
+  const listed = formatRateList(rateCurve);
+  const txt = document.getElementById("curveText");
+  if (txt && document.activeElement !== txt) txt.value = listed.text;
+  const fromBox = document.getElementById("v-curveFrom");
+  if (fromBox && document.activeElement !== fromBox)
+    fromBox.value = listed.from === null ? state.startAge + 1 : listed.from;
+  for (const [id, key] of [["v-curveYMin", "curveYMin"], ["v-curveYMax", "curveYMax"]]) {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = state[key];
+  }
   const shuf = document.getElementById("curveShuffle");
   if (shuf) shuf.disabled = Object.keys(rateCurve).length < 2;
   const conn = document.getElementById("curveConnect");
@@ -2530,7 +2700,9 @@ function paintAt(age, val) {
   if (!state.curveOn) return;      // the Advanced checkbox is the one switch
   const g = curveGeom();
   if (age <= g.A0 || age > g.E) return;
-  rateCurve[age] = Math.round(Math.max(CURVE.yMin, Math.min(CURVE.yMax, val)) * 5) / 5;
+  /* the mouse resolves about a fifth of a point on this strip, so drawing
+     snaps to 0.2 while a typed value keeps the grid's full tenth */
+  rateCurve[age] = Math.round(Math.max(g.yMin, Math.min(g.yMax, val)) * 5) / 5;
 }
 /* ---- shuffle order ---- */
 /* Permutes the drawn values among the drawn ages (Fisher-Yates). The set of
@@ -2593,8 +2765,8 @@ function hasGaps(map) {
     const py = (ev.clientY - r.top) / r.height * CURVE.H;
     const age = Math.round(g.A0 + (px - CURVE.L) /
       (CURVE.W - CURVE.L - CURVE.R) * (g.E - g.A0));
-    const val = CURVE.yMax - (py - CURVE.T) /
-      (CURVE.H - CURVE.T - CURVE.B) * (CURVE.yMax - CURVE.yMin);
+    const val = g.yMax - (py - CURVE.T) /
+      (CURVE.H - CURVE.T - CURVE.B) * (g.yMax - g.yMin);
     return { age, val };
   };
   const paintSpan = (a1, v1, a2, v2) => {
@@ -2639,6 +2811,51 @@ function hasGaps(map) {
   });
   document.getElementById("curveConnect").addEventListener("click", () => {
     if (connectGaps(rateCurve, 5)) { render(); pushHistory(); }
+  });
+  /* apply series: the box is authoritative, so this replaces the drawn curve
+     with exactly what the box says, then lets the render write the stored
+     schedule back into the box. What comes back is what was kept, which is
+     how rounding and clamping become visible instead of being claimed. */
+  document.getElementById("curveApply").addEventListener("click", () => {
+    const txt = document.getElementById("curveText");
+    const fromBox = document.getElementById("v-curveFrom");
+    if (!txt) return;
+    const p = parseRateList(txt.value);
+    const raw = fromBox && fromBox.value !== "" ? Number(fromBox.value) : NaN;
+    const r = applyRateList(p.values,
+      Number.isFinite(raw) ? raw : state.startAge + 1);
+    /* widen the lens to fit what was applied: a real series routinely runs
+       past the default window, and a third of it pinned at the edge is not
+       a view of anything. Narrowing back is the user's to do. */
+    const vals = Object.keys(rateCurve).map(a => rateCurve[a]);
+    if (vals.length) {
+      const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+      if (lo < state.curveYMin)
+        state.curveYMin = clampVal("curveYMin", Math.floor(lo / 5) * 5);
+      if (hi > state.curveYMax)
+        state.curveYMax = clampVal("curveYMax", Math.ceil(hi / 5) * 5);
+    }
+    const msg = [r.applied + (r.applied === 1 ? " year" : " years") +
+                 " applied from age " + r.from];
+    if (r.dropped) msg.push(r.dropped + " outside the plan's years dropped");
+    if (p.clamped) msg.push(p.clamped + " clamped to " + GRID.rate.lo +
+                            "% to " + GRID.rate.hi + "%");
+    if (p.snapped) msg.push(p.snapped + " rounded to a tenth");
+    if (p.bad.length) msg.push(p.bad.length + " not numbers, left undrawn");
+    const out = document.getElementById("curveMsg");
+    if (out) out.textContent = msg.join("; ");
+    render();
+    pushHistory();
+  });
+  /* the axis lens: a view setting, so it re-renders but changes no value */
+  document.addEventListener("change", e => {
+    if (!e.target) return;
+    if (e.target.id === "v-curveYMin" || e.target.id === "v-curveYMax") {
+      const key = e.target.id === "v-curveYMin" ? "curveYMin" : "curveYMax";
+      const c = clampVal(key, Number(e.target.value));
+      if (c !== null) state[key] = c;
+      render(); pushHistory();
+    }
   });
 }
 { /* every render also refreshes the strip */
@@ -2902,7 +3119,7 @@ function buildReport() {
     add("Spending tilt curve", "drawn (" + nDrawn(tiltCurve) + " years)");
   const readout = id => {
     const s = document.getElementById(id);
-    return s && s.textContent ? s.textContent : "\u2014";
+    return s && s.textContent ? s.textContent : "\u2013";
   };
   const vb = (id, fallback) => {
     const s = document.getElementById(id);
@@ -2969,7 +3186,7 @@ function buildReport() {
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.24i \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.25b \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
