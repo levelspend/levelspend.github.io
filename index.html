@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.25e -->
+<!-- LevelSpend build 2026.07.25g -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -357,7 +357,10 @@
         recomputes as you draw. Values left
         of the dashed retirement marker are
         stored but inactive; move the retirement age to bring them into the
-        plan. The first retirement year is the anchor that later changes are
+        plan. Before the marker the dotted line shows the tilt setting and the
+        dashes show drawn values, both inactive: no tilt applies during the
+        working years, where spending does not change from one year to the
+        next. The first retirement year is the anchor that later changes are
         measured from, so no change applies to it. Connect points fills the
         undrawn years between two drawn ones with a straight line. The y-axis
         range above is a lens: narrowing it never changes
@@ -493,7 +496,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25e</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25g</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -2938,6 +2941,22 @@ function renderTiltStrip() {
   out += '<line x1="' + g.x(g.R0) + '" x2="' + g.x(g.R0) +
     '" y1="' + TILT.T + '" y2="' + (TILT.H - TILT.B) +
     '" stroke="#6B7280" stroke-dasharray="3 3" opacity="0.6"/>';
+  /* Working years: the same rule as the live side, in the inactive style.
+     Undrawn years show the tilt setting and follow the slider; drawn years
+     show their stored value (the dashed segments below) and the dotted line
+     steps aside for them. Everything here is display only. Working spending
+     is income minus savings every year, so no tilt applies before the
+     marker; dotted, like the dashes of the stored values, means inactive:
+     what the setting would contribute if the retirement age moved back over
+     it. The strip shares an x-axis with the rate strip, which draws across
+     its whole width, so a blank third would read as missing rather than as
+     inactive. */
+  for (let a = g.A0 + 1; a <= Math.min(g.R0, g.E); a++) {
+    if (tiltCurve[a] !== undefined) continue;
+    out += '<line x1="' + g.x(a - 1) + '" x2="' + g.x(a) +
+      '" y1="' + g.y(tilt) + '" y2="' + g.y(tilt) +
+      '" stroke-width="3" stroke="#B9BEC6" stroke-dasharray="1 3"/>';
+  }
   /* inactive stored values (at or left of the anchor first year): dashed
      gray, waiting for the retirement age to reach them */
   for (let a = g.A0 + 1; a <= Math.min(g.R0 + 1, g.E); a++) {
@@ -3210,7 +3229,7 @@ function buildReport() {
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.25e \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.25g \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
