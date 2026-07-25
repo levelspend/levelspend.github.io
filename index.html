@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.25b -->
+<!-- LevelSpend build 2026.07.25c -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -220,19 +220,23 @@
     .rep-note { color:#777; font-size:10.5px; }
     .rep-link { display:inline-block; margin-top:10px; font-size:11.5px; }
     .rep-strip svg { width:100%; height:auto; }
-    /* page 2 holds the plan chart, rotated a quarter turn inside its own
-       SVG (see rotatedChartSVG) so it reads sideways on a portrait sheet.
-       Rotating the artifact, not the page, means every browser prints the
-       same: no per-page orientation, which Firefox lays out but does not
-       send to the paper, clipping the right edge. The rotated image is
-       sized by HEIGHT, capped so the heading and chart share one page on
-       letter and A4 alike; width follows the chart's own aspect, centered.
-       This bounds the image, not the paper: no page size is declared, and
-       the sheet stays the user's. Strips are short and stay upright; each
-       travels with its heading as one block onto whatever page it lands. */
-    .rep-chart-rot svg { height:225mm; width:auto; max-width:100%;
+    /* Page 2 holds the plan chart the way it appears on screen: upright,
+       fitted to the width of whatever sheet the browser is using. It reads
+       smaller on a portrait page than it used to, and anyone who wants it
+       bigger can choose landscape in the print dialog, which the report
+       does not override: no page size and no orientation are declared, so
+       the sheet stays the user's.
+
+       The height cap is a guard, not a size. A chart drawn in a narrow
+       window is tall relative to its width, and at full page width its
+       height could run past the bottom of the sheet; capping it lets the
+       SVG scale down inside its box instead. preserveAspectRatio is left
+       at its default, so a capped chart is centered with space at the
+       sides rather than squashed. Strips are short and each travels with
+       its heading as one block onto whatever page it lands on. */
+    .rep-chart svg { width:100%; height:auto; max-height:190mm;
       display:block; margin:0 auto; }
-    .rep-chart-rot { break-inside: avoid; page-break-inside: avoid; }
+    .rep-chart { break-inside: avoid; page-break-inside: avoid; }
     .rep-stripblk { break-inside: avoid; page-break-inside: avoid; }
     .rep-page2 { break-before: page; page-break-before: always; }
     .rep-foot { position:fixed; bottom:0; left:0; right:0; font-size:9.5px;
@@ -257,7 +261,7 @@
     <button class="mast-btn" id="retiredBtn"
       title="Load the retired example numbers">retired example</button>
     <button class="mast-btn" id="printBtn"
-      title="Open your browser's print dialog with a two-page plan report: inputs and results, then the chart. Use the dialog's Save as PDF to keep a dated copy with a live scenario link.">print report</button>
+      title="Open your browser's print dialog with a two-page plan report: inputs and results, then the chart. Choose landscape in the dialog for a larger chart, or Save as PDF to keep a dated copy with a live scenario link.">print report</button>
   </span>
 </div>
 <div class="cols">
@@ -489,7 +493,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25b</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25c</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -3127,35 +3131,27 @@ function buildReport() {
     return s ? '<svg viewBox="' + (s.getAttribute("viewBox") || fallback) +
       '" xmlns="http://www.w3.org/2000/svg">' + s.innerHTML + "</svg>" : "";
   };
-  /* The chart clone gets two report-only changes, both on a detached DOM
-     copy so nothing on the page moves:
-       - the gold balance area is repainted with a flat fill and a
-         fill-opacity attribute. On screen it is a gradient (fill
-         url(#gBal), stops 0.12 -> 0.015); PDF exporters commonly drop
-         gradient stop-opacity, printing a solid gold slab over the bands.
-         A flat fill-opacity is the same technique the income bands use
-         and prints correctly. The cloned <defs> goes too, so no duplicate
-         id="gBal" lives in the document while the report is up.
-       - the whole drawing is turned a quarter turn: the outer viewBox
-         swaps to H x W and the content rides a rotate(90) then a
-         translate, so a wide-window chart and a narrow-window chart land
-         in the same rotated portrait footprint. width:100% then fills the
-         page across, reading sideways. */
-  const rotatedChartSVG = () => {
+  /* The chart clone keeps its own orientation and geometry. It gets one
+     report-only change, made on a detached DOM copy so nothing on the page
+     moves: the gold balance area is repainted with a flat fill and a
+     fill-opacity attribute. On screen it is a gradient (fill url(#gBal),
+     stops 0.12 -> 0.015); PDF exporters commonly drop gradient
+     stop-opacity, printing a solid gold slab over the bands. A flat
+     fill-opacity is the same technique the income bands use and prints
+     correctly. The cloned <defs> goes too, so no duplicate id="gBal" lives
+     in the document while the report is up. */
+  const reportChartSVG = () => {
     const s = document.getElementById("chart");
     if (!s) return "";
-    const vbAttr = (s.getAttribute("viewBox") || "0 0 800 460").split(/\s+/).map(Number);
-    const W = vbAttr[2] || 800, H = vbAttr[3] || 460;
+    const vb = s.getAttribute("viewBox") || "0 0 800 460";
     const g = s.cloneNode(true);
     g.querySelectorAll("defs").forEach(d => d.remove());
     g.querySelectorAll('[fill="url(#gBal)"]').forEach(p => {
       p.setAttribute("fill", "#C0973B");
       p.setAttribute("fill-opacity", "0.10");
     });
-    return '<svg viewBox="0 0 ' + H + " " + W +
-      '" xmlns="http://www.w3.org/2000/svg">' +
-      '<g transform="rotate(90) translate(0 ' + (-H) + ')">' +
-      g.innerHTML + "</g></svg>";
+    return '<svg viewBox="' + vb + '" xmlns="http://www.w3.org/2000/svg">' +
+      g.innerHTML + "</svg>";
   };
   const dateStr = new Date().toLocaleDateString(undefined,
     { year: "numeric", month: "long", day: "numeric" });
@@ -3180,14 +3176,14 @@ function buildReport() {
     '">Open this scenario in LevelSpend</a>' +
     '<div class="rep-page2">' +
     '<div class="rep-h2">Plan chart</div>' +
-    '<div class="rep-chart rep-chart-rot">' + rotatedChartSVG() + "</div>" +
+    '<div class="rep-chart">' + reportChartSVG() + "</div>" +
     (state.curveOn ? '<div class="rep-stripblk"><div class="rep-h3">Growth rate curve</div>' +
       '<div class="rep-strip">' + vb("curveStrip", "0 0 800 200") + "</div></div>" : "") +
     (state.tiltOn ? '<div class="rep-stripblk"><div class="rep-h3">Spending tilt curve</div>' +
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.25b \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.25c \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
