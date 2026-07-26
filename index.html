@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.26i -->
+<!-- LevelSpend build 2026.07.26k -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -422,10 +422,10 @@
               the amount as typed. A benefit with a start age at or before
               your age now keeps its amount under both. The spouse's
               Social Security slot follows the same rules on the spouse's
-              own timeline, treated as the spouse's own benefit; a true
-              spousal benefit (a share of the partner's record) follows a
-              somewhat steeper early schedule and gains nothing past full
-              retirement age. A spouse's
+              own timeline, treated as the spouse's own earnings record. If
+              the amount is instead a share of your record, check
+              <b>Spousal benefit</b> there: that schedule falls faster for
+              claiming early and stops growing at 67. A spouse's
               benefits go under <b>Spouse</b>; with the spouse's <b>age
               now</b> entered there, their benefit ages are the spouse's own.
               Two more retirement income streams on your own timeline are
@@ -547,7 +547,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26i</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26k</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -574,7 +574,7 @@ const state = {
   penAmt: 12000, penAge: 65, penStop: 0, ssAmt: 24000, ssAge: 70, ssStop: 0,
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   inc1Amt: 0, inc1Age: 67, inc1Stop: 0, inc2Amt: 0, inc2Age: 67, inc2Stop: 0,
-  spouseAge: 0,
+  spouseAge: 0, ss2Spousal: false,
   legacy: 0,
   inflPct: 3, penCola: true, pen2Cola: true, inc1Cola: true, inc2Cola: true, tiltPct: 0,
   curveOn: false, tiltOn: false, tiltYMin: -3, tiltYMax: 3,
@@ -805,21 +805,33 @@ function buildSchedule(A0, E, Rkink) {
    scenario link means the same plan whenever it is opened. The gate on
    ssAge > startAge keeps a benefit already being paid at its typed amount,
    which is what lets the already-retired instructions call start ages at or
-   below age now equivalent. Slot 2 scales the same way, on the spouse's
-   own timeline, treating the entry as the spouse's own retired-worker
-   benefit. A true spousal benefit (a share of the partner's record)
-   follows a steeper reduction below full retirement age (25/36 of 1% per
-   month for 36 months) and earns nothing for delay past it; the worker
-   factors approximate it within a few percent below full retirement age
-   and overstate a delay past it, a delay that pays nothing and so is
-   rarely planned. Fractional a and R are allowed (solveRStarExact bisects
-   between whole years). */
-function ssFactorAt(a) {
+   below age now equivalent. Slot 2 scales the same way on the spouse's own
+   timeline, treating the entry as the spouse's own record unless ss2Spousal
+   marks it as a share of the partner's, which switches schedules. The two
+   are not close enough to share one: substituting the own-record factors
+   for a spousal benefit runs about 7% low between 62 and full retirement
+   age and up to 24% high for a delay past it, which is why the flag exists
+   rather than an approximation. Fractional a and R are allowed
+   (solveRStarExact bisects between whole years). */
+function claimFactor(a, spousal) {
   const FRA = 67;
+  if (spousal) {
+    /* a share of the partner's record: the reduction below full retirement age
+       is steeper (25/36 of 1% per month for the first 36 months, 5/12 beyond)
+       and there are NO delayed credits, so the schedule is flat from 67 on */
+    if (a >= FRA) return 1;
+    const mo = (FRA - a) * 12;
+    return 1 - (Math.min(mo, 36) * (25/36) + Math.max(mo - 36, 0) * (5/12)) / 100;
+  }
   if (a >= FRA) return 1 + Math.min(a - FRA, 70 - FRA) * 12 * (2/3) / 100;
   const mo = (FRA - a) * 12;
   return 1 - (Math.min(mo, 36) * (5/9) + Math.max(mo - 36, 0) * (5/12)) / 100;
 }
+const ssFactorAt = a => claimFactor(a, false);
+/* growth stops at 70 on your own record and at full retirement age on a
+   spousal benefit; 62 is the floor either way */
+const claimCap = spousal => spousal ? 67 : 70;
+const claimClamp = (a, spousal) => Math.min(Math.max(a, 62), claimCap(spousal));
 function ssScale(R) {
   if (!(state.ssAmt > 0) || state.ssAge <= state.startAge) return 1;
   /* both ends capped to [62, 70]: outside that range the factors do not
@@ -834,11 +846,12 @@ function ssScale(R) {
    age now (blank spouse age means same age) */
 function ss2Scale(R) {
   if (!(state.ss2Amt > 0)) return 1;
+  const sp = !!state.ss2Spousal;
   const off = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
   const ageNow2 = state.spouseAge > 0 ? state.spouseAge : state.startAge;
   if (state.ss2Age <= ageNow2) return 1;
-  const claim = Math.max(Math.min(Math.max(R - off, state.ss2Age), 70), 62);
-  return ssFactorAt(claim) / ssFactorAt(Math.max(Math.min(state.ss2Age, 70), 62));
+  const claim = claimClamp(Math.max(R - off, state.ss2Age), sp);
+  return claimFactor(claim, sp) / claimFactor(claimClamp(state.ss2Age, sp), sp);
 }
 
 function planAt(R0, s) {
@@ -1266,6 +1279,9 @@ const LINK_BASE = {
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false, futureOn: false,
+  /* appended when the claiming factors shipped: a link written before this key
+     existed described the spouse's OWN record, which is what false means */
+  ss2Spousal: false,
 };
 const LINK_VER = "2";
 /* the parameters of a link for st, in state order, v first */
@@ -1495,6 +1511,12 @@ function buildInputs() {
       '</div>' +
       '<div class="note" id="note-ss2" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Begins at retirement; the tool pays no income before retirement age.</div>' +
+      '<label class="adv-check"><input type="checkbox" id="v-ss2Spousal"> ' +
+        'Spousal benefit (a share of your record)</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Check this if the amount is a share of your benefit rather than the ' +
+        'spouse\u2019s own earnings record: it falls faster for claiming early ' +
+        'and stops growing at 67.</div>' +
       '<div class="grid-inc">' +
         moneyField("pen2Amt", "Pension 2 ($/yr)", 500) +
         numField("pen2Age", "Start age", 1) +
@@ -1756,7 +1778,7 @@ function buildInputs() {
   const midSlider = host.querySelector("#v-rateMid-slider");
   midSlider.addEventListener("input", e => { state.rateMid = Number(e.target.value); render(); });
   midSlider.addEventListener("change", () => pushHistory());
-  for (const k of ["penCola", "pen2Cola", "inc1Cola", "inc2Cola"]) {
+  for (const k of ["penCola", "pen2Cola", "inc1Cola", "inc2Cola", "ss2Spousal"]) {
     host.querySelector("#v-" + k).addEventListener("change", e => {
       state[k] = e.target.checked;
       render();
@@ -1879,6 +1901,8 @@ function refreshInputs(m) {
   if (cb3) cb3.checked = !!state.inc1Cola;
   const cb4 = document.getElementById("v-inc2Cola");
   if (cb4) cb4.checked = !!state.inc2Cola;
+  const cb5 = document.getElementById("v-ss2Spousal");
+  if (cb5) cb5.checked = !!state.ss2Spousal;
 
   /* solve readouts */
   const setBtn = document.getElementById("setSStar");
@@ -2618,9 +2642,10 @@ function attachRateDrag() {
           /* whole dollars, not hundreds: the amount is computed from the
              typed number by an exact factor, so at the anchor age the ratio
              is exactly 1 and the typed amount round-trips to the dollar */
-          const cap = x => Math.min(Math.max(x, 62), 70);
+          const sp = st.amt === "ss2Amt" && !!state.ss2Spousal;
           state[st.amt] = Math.round(dragMeta.anchor.amt0
-            * ssFactorAt(cap(v)) / ssFactorAt(cap(dragMeta.anchor.a0)));
+            * claimFactor(claimClamp(v, sp), sp)
+            / claimFactor(claimClamp(dragMeta.anchor.a0, sp), sp));
         }
       } else {
         /* stop edge sits at the last paid age (primary timeline); at or past
@@ -2761,29 +2786,31 @@ function render() {
      error anyone can see on screen is 0.16% (births 1958 and 1959; exactly
      zero for 1960 and later). That assumption belongs in the help text, which
      states it, not in a line that redraws on every drag frame. */
-  const ssClaimNote = (id, amt, entered, claim, past70) => {
+  const ssClaimNote = (id, amt, entered, claim, pastCap, cap) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.textContent = amt === null
       ? "Begins at retirement; the tool pays no income before retirement age."
-      : past70
-        ? "Claimed at retirement, past 70: pays the age-70 amount, " +
-          fmt$(amt) + "/yr."
+      : pastCap
+        ? "Claimed at retirement, past " + cap + ": pays the age-" + cap +
+          " amount, " + fmt$(amt) + "/yr."
         : "Claimed at retirement (" + claim + ") instead of " + entered +
           ": pays " + fmt$(amt) + "/yr.";
   };
   {
     const Rr = Math.round(state.retAge), sc = ssScale(Rr);
     ssClaimNote("note-ss", sc === 1 ? null : state.ssAmt * sc,
-      Math.max(state.ssAge, 62), Math.min(Rr, 70), Rr > 70);
+      Math.max(state.ssAge, 62), Math.min(Rr, 70), Rr > 70, 70);
   }
   {
-    /* slot-2 ages are the spouse's own, so the claim age is on their timeline */
+    /* slot-2 ages are the spouse's own, so the claim age is on their timeline,
+       and a spousal benefit stops growing at 67 rather than 70 */
     const Rr = Math.round(state.retAge);
     const off2 = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
-    const sc2 = ss2Scale(Rr);
+    const sc2 = ss2Scale(Rr), cap2 = claimCap(!!state.ss2Spousal);
     ssClaimNote("note-ss2", sc2 === 1 ? null : state.ss2Amt * sc2,
-      Math.max(state.ss2Age, 62), Math.min(Rr - off2, 70), Rr - off2 > 70);
+      Math.max(state.ss2Age, 62), Math.min(Rr - off2, cap2),
+      Rr - off2 > cap2, cap2);
   }
   [["note-pen",  state.penAmt  > 0 && state.penAge          < state.retAge],
    ["note-ss",   state.ssAmt   > 0 && state.ssAge           < state.retAge],
@@ -3477,12 +3504,15 @@ function buildReport() {
   if (state.allowBorrow) add("Borrowing", "allowed");
   if (state.spouseAge > 0) add("Spouse\u2019s age now", state.spouseAge);
   if (state.ss2Amt > 0) {
-    const sc2 = ss2Scale(Math.round(state.retAge));
+    const Rr2 = Math.round(state.retAge);
+    const sc2 = ss2Scale(Rr2), cap2 = claimCap(!!state.ss2Spousal);
     const off2 = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
+    const n2 = [];
+    if (state.ss2Spousal) n2.push("spousal benefit");
+    if (sc2 !== 1) n2.push("scaled to " + fmt$(state.ss2Amt * sc2) +
+      "/yr for claiming at " + Math.min(Rr2 - off2, cap2));
     add("Social Security 2", span(state.ss2Amt, state.ss2Age, state.ss2Stop),
-      sc2 !== 1 ? "scaled to " + fmt$(state.ss2Amt * sc2) +
-        "/yr for claiming at " + Math.min(Math.round(state.retAge) - off2, 70)
-        : "");
+      n2.join(", "));
   }
   if (state.pen2Amt > 0)
     add("Pension 2", span(state.pen2Amt, state.pen2Age, state.pen2Stop) +
@@ -3579,7 +3609,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.26i \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.26k \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
