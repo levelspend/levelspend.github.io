@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.26h -->
+<!-- LevelSpend build 2026.07.26i -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -547,7 +547,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26h</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26i</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -2753,42 +2753,37 @@ function render() {
      Math.max(age, R) clamps in simulate). Slot 2 ages are on the
      spouse's timeline when a spouse start age is entered. */
   const sOffN = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
-  const ssDynNote = (id, sc, entered, claim, past70) => {
+  /* One writer for both Social Security notes. amt === null means the claim
+     age has not moved, so the plain sentence stands. The fixed full retirement
+     age is deliberately NOT repeated here: the scale is a RATIO of two claiming
+     factors, so an FRA off by up to a year mostly cancels, and with a benefit
+     already in payment never rescaled and credits stopping at 70, the largest
+     error anyone can see on screen is 0.16% (births 1958 and 1959; exactly
+     zero for 1960 and later). That assumption belongs in the help text, which
+     states it, not in a line that redraws on every drag frame. */
+  const ssClaimNote = (id, amt, entered, claim, past70) => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (sc !== 1)
-      el.textContent = past70
-        ? "Begins at retirement. Credits stop at 70, so the tool pays the " +
-          "age-70 amount, " + fmt$(sc.amt) + "/yr."
-        : "Begins at retirement. Claimed at " + claim + " instead of " +
-          entered + ", the tool pays " + fmt$(sc.amt) +
-          "/yr (claiming factors, full retirement age 67).";
-    else el.textContent =
-      "Begins at retirement; the tool pays no income before retirement age.";
+    el.textContent = amt === null
+      ? "Begins at retirement; the tool pays no income before retirement age."
+      : past70
+        ? "Claimed at retirement, past 70: pays the age-70 amount, " +
+          fmt$(amt) + "/yr."
+        : "Claimed at retirement (" + claim + ") instead of " + entered +
+          ": pays " + fmt$(amt) + "/yr.";
   };
-  const ssNote = document.getElementById("note-ss");
-  if (ssNote) {
+  {
     const Rr = Math.round(state.retAge), sc = ssScale(Rr);
-    if (sc !== 1) {
-      const claim = Math.min(Rr, 70);
-      ssNote.textContent = Rr > 70
-        ? "Begins at retirement. Credits stop at 70, so the tool pays the " +
-          "age-70 amount, " + fmt$(state.ssAmt * sc) + "/yr."
-        : "Begins at retirement. Claimed at " + claim + " instead of " +
-          Math.max(state.ssAge, 62) + ", the tool pays " +
-          fmt$(state.ssAmt * sc) + "/yr (claiming factors, full retirement age 67).";
-    } else {
-      ssNote.textContent =
-        "Begins at retirement; the tool pays no income before retirement age.";
-    }
+    ssClaimNote("note-ss", sc === 1 ? null : state.ssAmt * sc,
+      Math.max(state.ssAge, 62), Math.min(Rr, 70), Rr > 70);
   }
   {
+    /* slot-2 ages are the spouse's own, so the claim age is on their timeline */
     const Rr = Math.round(state.retAge);
     const off2 = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
     const sc2 = ss2Scale(Rr);
-    const claim2 = Math.min(Rr - off2, 70);
-    ssDynNote("note-ss2", sc2 === 1 ? 1 : { amt: state.ss2Amt * sc2 },
-      Math.max(state.ss2Age, 62), claim2, Rr - off2 > 70);
+    ssClaimNote("note-ss2", sc2 === 1 ? null : state.ss2Amt * sc2,
+      Math.max(state.ss2Age, 62), Math.min(Rr - off2, 70), Rr - off2 > 70);
   }
   [["note-pen",  state.penAmt  > 0 && state.penAge          < state.retAge],
    ["note-ss",   state.ssAmt   > 0 && state.ssAge           < state.retAge],
@@ -3584,7 +3579,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.26h \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.26i \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
