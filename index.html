@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.25i-shock -->
+<!-- LevelSpend build 2026.07.25i -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -209,8 +209,6 @@
   #report { display:none; }
   #unitNote { display:none; font-size:11.5px; color:var(--ink-soft);
     margin:2px 2px 6px; }
-  #shockNote { display:none; font-size:11.5px; color:#7A5A24;
-    margin:2px 2px 6px; }
   @media print {
     @page { margin: 16mm 14mm 22mm; }
     body > *:not(#report) { display:none !important; }
@@ -299,7 +297,6 @@
       <div id="feasWarn" style="display:none;"></div>
       <div class="stats" id="stats"></div>
       <div id="unitNote"></div>
-      <div id="shockNote"></div>
       <div id="chartBox">
         <svg id="chart" width="100%" role="img" aria-label="Plan chart"></svg>
         <div id="tip"></div>
@@ -424,7 +421,7 @@
               a real (after-inflation) return: historically roughly 2% to 7%
               depending on the era and starting valuations. No one knows this
               rate in advance; try several values and see how much the
-              results move. <b>Sensitivity</b>, under <b>Advanced</b>,
+              results move. <b>Rate sensitivity</b>, under <b>Advanced</b>,
               draws the cost of guessing 1% wrong directly on the chart.</li>
           <li>Under <b>Decision variables</b>, enter the <b>retirement
               age</b> you have in mind and your <b>savings rate</b>, the
@@ -531,7 +528,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25i-shock</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25i</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -566,7 +563,6 @@ const state = {
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false, futureOn: false,
-  dropOn: false, dropPct: 30,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -1149,7 +1145,6 @@ function clampVal(key, v) {
     return Math.max(Math.round(v), 0);
   if (key === "savePct") return Math.min(Math.max(v, 0), 100);
   if (key === "tiltPct") return Math.min(Math.max(v, -10), 10);
-  if (key === "dropPct") return Math.min(Math.max(Math.round(v * 10) / 10, 0), 95);
   if (key === "rateMid2") return v < 0 ? -1 : Math.max(v, 0);
   /* growth rates may be negative (a real loss, e.g. cash under inflation),
      floored at -20%. rateMid2 is excluded: its negative is the coupled
@@ -1204,7 +1199,6 @@ const LINK_BASE = {
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false, futureOn: false,
-  dropOn: false, dropPct: 30,
 };
 const LINK_VER = "2";
 /* the parameters of a link for st, in state order, v first */
@@ -1614,29 +1608,14 @@ function buildInputs() {
         'drawn or typed. Drawn years override the rate settings above; ' +
         'undrawn years still follow them.</div>' +
       '</details>' +
-      '<details class="adv sub"' + ((state.envOn || state.dropOn) ? " open" : "") + '>' +
-      '<summary>Sensitivity</summary>' +
+      '<details class="adv sub"' + (state.envOn ? " open" : "") + '>' +
+      '<summary>Rate sensitivity</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-envOn"> ' +
         'Show spending at ±1% growth</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'Draws dashed companion lines: the level spending this same plan ' +
         'would support if the growth rate were one point lower or one point ' +
         'higher. Spending absorbs the difference; nothing else changes.</div>' +
-      '<label class="adv-check"><input type="checkbox" id="v-dropOn"> ' +
-        'Show the plan after a portfolio drop of</label>' +
-      '<div class="grid2" id="dropRow">' +
-        '<div class="pct"><input type="number" class="numbox" id="v-dropPct" ' +
-          'step="5" aria-label="Portfolio drop percent">' +
-          '<span class="unit">%</span></div>' +
-        '<div></div>' +
-      '</div>' +
-      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Adds a line above the chart showing the plan after your starting ' +
-        'portfolio falls by this much today, with everything else unchanged. ' +
-        'A broadly diversified portfolio can lose a quarter to a third of ' +
-        'its value in a bad year; half your stock percentage is a fair ' +
-        'estimate of a severe loss. The main readouts keep showing the plan ' +
-        'without the drop.</div>' +
       '</details>' +
       '<details class="adv sub"' + (state.allowBorrow ? " open" : "") + '>' +
       '<summary>Allow borrowing</summary>' +
@@ -1657,7 +1636,7 @@ function buildInputs() {
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop","spouseAge",
                 "inc1Amt","inc1Age","inc1Stop","inc2Amt","inc2Age","inc2Stop",
-                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2","dropPct"];
+                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2"];
   // glideJump is a boolean gate, handled in sync below
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
@@ -1687,10 +1666,6 @@ function buildInputs() {
   const envBox = host.querySelector("#v-envOn");
   envBox.addEventListener("change", e => {
     state.envOn = e.target.checked; render(); pushHistory();
-  });
-  const dropBox = host.querySelector("#v-dropOn");
-  dropBox.addEventListener("change", e => {
-    state.dropOn = e.target.checked; render(); pushHistory();
   });
   const futBox = host.querySelector("#v-futureOn");
   futBox.addEventListener("change", e => {
@@ -1779,11 +1754,6 @@ function refreshInputs(m) {
   if (abB) abB.checked = !!state.allowBorrow;
   const evB = document.getElementById("v-envOn");
   if (evB) evB.checked = !!state.envOn;
-  const dpB = document.getElementById("v-dropOn");
-  if (dpB) dpB.checked = !!state.dropOn;
-  syncBox("v-dropPct", state.dropPct);
-  const dpRow = document.getElementById("dropRow");
-  if (dpRow) dpRow.style.display = state.dropOn ? "" : "none";
   const fuB = document.getElementById("v-futureOn");
   if (fuB) fuB.checked = !!state.futureOn;
   const gRow = document.getElementById("glideRow");
@@ -2650,45 +2620,6 @@ function render() {
   renderChart(m);
   renderPlanTable(m);
 
-  /* ---- portfolio-drop readout ----
-     The plan re-solved with the starting portfolio cut by dropPct today and
-     nothing else changed: the number the yearly revisit would hand back after
-     a bad year. A balance cut rather than a drawn return year, so it matches
-     to the dollar what typing the smaller portfolio would show. Frozen during
-     drags along with the warning, since its appearance moves the layout. */
-  const shockEl = document.getElementById("shockNote");
-  if (shockEl && !layoutFreeze) {
-    if (!state.dropOn || !(state.dropPct > 0) || m.nRet === 0 || !(m.S > 0)) {
-      shockEl.style.display = "none";
-    } else {
-      const keep = state.startBal;
-      let sm, sStarD = NaN, rStarD = null;
-      try {
-        state.startBal = Math.round(keep * (1 - state.dropPct / 100));
-        sm = simulate();
-        if (sm.nWork > 0) { sStarD = sm.sStar; rStarD = solveRStar(); }
-      } finally {
-        state.startBal = keep;
-      }
-      let txt = "After a " + state.dropPct + "% portfolio drop today: " +
-        "retirement spending " + fmt$(sm.S);
-      if (m.S > 0 && sm.S < m.S)
-        txt += ", a cut of " + fmtPct((1 - sm.S / m.S) * 100);
-      if (sm.nWork > 0) {
-        const parts = [];
-        if (Number.isFinite(sStarD) && sStarD > 0 && sStarD <= 1)
-          parts.push("a savings rate of " + fmtPct(sStarD * 100));
-        if (rStarD !== null && rStarD > sm.A0)
-          parts.push("retirement at " + rStarD);
-        if (parts.length)
-          txt += ". Level spending would then take " + parts.join(", or ");
-      }
-      shockEl.textContent = txt + ".";
-      shockEl.style.display = "block";
-    }
-  }
-  /* ---- end portfolio-drop readout ---- */
-
   const agesNote = document.getElementById("note-ages");
   if (agesNote) {
     agesNote.textContent = ratchetNote;
@@ -3369,12 +3300,6 @@ function buildReport() {
     add("Spending tilt", (state.tiltPct > 0 ? "+" : "") + state.tiltPct + "%/yr");
   if (state.inflPct !== D.inflPct) add("Inflation", state.inflPct + "%");
   if (state.allowBorrow) add("Borrowing", "allowed");
-  if (state.dropOn && state.dropPct > 0) {
-    const sk = document.getElementById("shockNote");
-    if (sk && sk.textContent)
-      add("Portfolio drop of " + state.dropPct + "%",
-          sk.textContent.replace(/^After a [^:]*: /, ""));
-  }
   if (state.spouseAge > 0) add("Spouse\u2019s age now", state.spouseAge);
   if (state.ss2Amt > 0)
     add("Social Security 2", span(state.ss2Amt, state.ss2Age, state.ss2Stop));
@@ -3473,7 +3398,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.25i-shock \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.25i \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
