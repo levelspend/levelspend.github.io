@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.25i -->
+<!-- LevelSpend build 2026.07.26f -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -408,7 +408,19 @@
               <b>legacy</b> you want left at the end age, in today's dollars.
               Enter 0 to spend everything.</li>
           <li>Enter <b>Social Security</b> and <b>pension</b> in today's
-              dollars, with the ages they begin. Enter 0 if none. A spouse's
+              dollars, with the ages they begin. Enter 0 if none. The
+              Social Security amount is your benefit at the start age next
+              to it, so each line of your SSA statement is such a pair:
+              the age-62, full-retirement-age, and age-70 figures. If your
+              retirement age ends up past your Social Security start age,
+              the tool claims at retirement instead and rescales the amount
+              by the official claiming factors (full retirement age 67;
+              credits stop at 70); a small note under the field shows the
+              amount it pays. Dragging the left edge of the Social
+              Security band on the chart moves the claim age and rescales
+              the amount along the same factors; typing a start age leaves
+              the amount as typed. A benefit with a start age at or before
+              your age now keeps its amount under both. A spouse's
               benefits go under <b>Spouse</b>; with the spouse's <b>age
               now</b> entered there, their benefit ages are the spouse's own.
               Two more retirement income streams on your own timeline are
@@ -440,6 +452,8 @@
               <b>solve</b> next to <b>savings rate</b> again: the updated
               rate is your savings target for the year ahead. Or re-solve
               <b>retirement age</b> and watch your feasible date move.
+              The browser's Back button steps back through your edits, so
+              a drag or a typo is one press away from undone.
               This update is also where a bad market shows up: try the same
               solve with your <b>starting portfolio</b> a third lower to see
               how far your savings target or feasible retirement age would
@@ -528,7 +542,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.25i</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26f</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -774,6 +788,37 @@ function buildSchedule(A0, E, Rkink) {
    interpolated between whole-year nodes, while income-stream PVs stay on
    the whole-year grid: a sub-year approximation that feeds a readout and
    never a plan. */
+/* ---- Social Security claiming factor ----
+   The amount entered is the benefit at the entered start age. When the
+   retirement age moves past that start age, the clamp above already delays
+   the claim to retirement; ssScale rescales the amount to match, using the
+   statutory factors: 5/9 of 1% per month for the first 36 months before
+   full retirement age, 5/12 of 1% per month beyond, and 2/3 of 1% per month
+   of delay after it, with credits stopping at 70. Full retirement age is
+   fixed at 67 (exact for births in 1960 or later): deriving it from a birth
+   year would need the wall clock, and the model stays clock-free so a
+   scenario link means the same plan whenever it is opened. The gate on
+   ssAge > startAge keeps a benefit already being paid at its typed amount,
+   which is what lets the already-retired instructions call start ages at or
+   below age now equivalent. Slot 2 is exempt on purpose: a spousal benefit
+   earns nothing from delay past full retirement age, and the tool cannot
+   tell a spousal benefit from the spouse's own. Fractional a and R are
+   allowed (solveRStarExact bisects between whole years). */
+function ssFactorAt(a) {
+  const FRA = 67;
+  if (a >= FRA) return 1 + Math.min(a - FRA, 70 - FRA) * 12 * (2/3) / 100;
+  const mo = (FRA - a) * 12;
+  return 1 - (Math.min(mo, 36) * (5/9) + Math.max(mo - 36, 0) * (5/12)) / 100;
+}
+function ssScale(R) {
+  if (!(state.ssAmt > 0) || state.ssAge <= state.startAge) return 1;
+  /* both ends capped to [62, 70]: outside that range the factors do not
+     move, so an entered age below 62 pays as typed until retirement passes
+     62, and any claim past 70 pays the age-70 amount */
+  const claim = Math.max(Math.min(Math.max(R, state.ssAge), 70), 62);
+  return ssFactorAt(claim) / ssFactorAt(Math.max(Math.min(state.ssAge, 70), 62));
+}
+
 function planAt(R0, s) {
   /* defensive coherence: clamp the age ordering here, so a scenario link
      or any non-interactive state load can never yield negative phase lengths
@@ -850,7 +895,7 @@ function planAt(R0, s) {
   const pen2Stop = stopOfS(state.pen2Stop), ss2Stop = stopOfS(state.ss2Stop);
   const inc1StopA = stopOf(state.inc1Stop), inc2StopA = stopOf(state.inc2Stop);
   const pvInc = pvStream(state.penAmt, penStart, penStop, state.penCola)
-              + pvStream(state.ssAmt, ssStart, ssStop, true)
+              + pvStream(state.ssAmt * ssScale(R), ssStart, ssStop, true)
               + pvStream(state.pen2Amt, pen2Start, pen2Stop, state.pen2Cola)
               + pvStream(state.ss2Amt, ss2Start, ss2Stop, true)
               + pvStream(state.inc1Amt, inc1Start, inc1StopA, state.inc1Cola)
@@ -898,7 +943,7 @@ function planAt(R0, s) {
     const p2 = (age >= pen2Start && age <= pen2Stop)
       ? (state.pen2Cola ? state.pen2Amt : state.pen2Amt * Math.pow(1 + infl, -(age - A0)))
       : 0;
-    const s1 = (age >= ssStart  && age <= ssStop)  ? state.ssAmt  : 0;
+    const s1 = (age >= ssStart  && age <= ssStop)  ? state.ssAmt * ssScale(R) : 0;
     const s2 = (age >= ss2Start && age <= ss2Stop) ? state.ss2Amt : 0;
     const i1 = (age >= inc1Start && age <= inc1StopA)
       ? (state.inc1Cola ? state.inc1Amt : state.inc1Amt * Math.pow(1 + infl, -(age - A0)))
@@ -1891,13 +1936,39 @@ function renderStats(m) {
     (m.nRet === 0
       ? stat("Retirement spending", "–", "var(--ink-soft)",
              "no retirement years")
-      : stat("Retirement spending", fmt$(m.S), "var(--decum)",
-             (!state.allowBorrow && m.steps && m.steps.length > 1)
-               ? stepPhrase(m.steps)
-               : state.tiltPct !== 0
-                 ? "first year · " + (state.tiltPct > 0 ? "+" : "") +
-                   state.tiltPct + "%/yr after"
-                 : ""));
+      : stat("Retirement spending", fmt$(m.S), "var(--decum)", retSub()));
+  /* sub-line for the Retirement spending stat. The big number stays the
+     first year of the drawn plan (both solves aim at it); when the drawn
+     rows vary, the sub carries where spending goes. Pure slider tilt is
+     monotonic, so its far end is named directly; a drawn curve can put the
+     extremes anywhere, so it gets the min-to-max range, as does any
+     stepped plan that also tilts or draws. The range is computed from the
+     rows the chart draws, so it reflects segmentation, tilt, and drawn
+     years together. */
+  function retSub() {
+    const rows = m.rows.filter(r => r.phase === "retired" && r.age > m.R);
+    let lo = Infinity, hi = -Infinity, last = 0;
+    for (const r of rows) {
+      if (r.spend < lo) lo = r.spend;
+      if (r.spend > hi) hi = r.spend;
+      last = r.spend;
+    }
+    if (!(hi - lo > 0.5)) return "";           // level as drawn
+    const stepped = !state.allowBorrow && m.steps && m.steps.length > 1;
+    let drawnT = false;
+    if (state.tiltOn)
+      for (let j = 1; j < m.nRet; j++)
+        if (tiltCurve[m.R + 1 + j] !== undefined) { drawnT = true; break; }
+    const range = fmt$(lo) + " to " + fmt$(hi);
+    if (stepped)
+      return stepPhrase(m.steps) + (drawnT || state.tiltPct !== 0
+        ? " · " + range : " to " + fmt$(hi));
+    if (drawnT) return "first year · varies, " + range;
+    if (state.tiltPct !== 0)
+      return "first year · " + (state.tiltPct > 0 ? "+" : "") +
+        state.tiltPct + "%/yr to " + fmt$(last);
+    return "varies, " + range;                 // safety net: unnamed variation
+  }
   /* "steps up at 71" for one or two, "steps up each year from 87 to 95" for
      a run, and the two mixed where a plan has both */
   function stepPhrase(steps) {
@@ -2436,7 +2507,8 @@ function attachRateDrag() {
       dragMeta = {
         st,
         below: st.below(row),
-        factor: st.cola() ? 1 : Math.pow(1 + state.inflPct / 100, -(row.age - geom.x0)),
+        factor: (st.cola() ? 1 : Math.pow(1 + state.inflPct / 100, -(row.age - geom.x0)))
+              * (st.amt === "ssAmt" ? ssScale(Math.round(state.retAge)) : 1),
         flowMax: geom.flowMax,
       };
     } else if (t.classList.contains("legacy-handle")) {
@@ -2454,6 +2526,17 @@ function attachRateDrag() {
         st: STREAMS[t.getAttribute("data-stream")],
         side: t.getAttribute("data-side"),
       };
+      /* Slot-1 Social Security start edge: the drag slides the claim age
+         along the claiming factors, so it rescales the amount too. Anchoring
+         to the pre-drag pair (rather than compounding step by step) makes
+         the drag path-independent: dragging away and back restores the
+         typed amount exactly. Typing a start age never rescales (a typed
+         pair states your benefit; the drag explores the schedule), and a
+         benefit already being paid (start age at or before age now) keeps
+         its amount under the drag as well. */
+      if (dragMeta.st.amt === "ssAmt" && dragMeta.side === "start"
+          && state.ssAge > state.startAge && state.ssAmt > 0)
+        dragMeta.anchor = { a0: state.ssAge, amt0: state.ssAmt };
     }
   });
   window.addEventListener("pointermove", e => {
@@ -2503,6 +2586,14 @@ function attachRateDrag() {
         let v = Math.max(Math.round(age), state.retAge) - off;
         if (v === state[st.age]) return;
         state[st.age] = v;
+        if (dragMeta.anchor) {
+          /* whole dollars, not hundreds: the amount is computed from the
+             typed number by an exact factor, so at the anchor age the ratio
+             is exactly 1 and the typed amount round-trips to the dollar */
+          const cap = x => Math.min(Math.max(x, 62), 70);
+          state.ssAmt = Math.round(dragMeta.anchor.amt0
+            * ssFactorAt(cap(v)) / ssFactorAt(cap(dragMeta.anchor.a0)));
+        }
       } else {
         /* stop edge sits at the last paid age (primary timeline); at or past
            the end age means "runs to the end" = the 0 sentinel */
@@ -2634,6 +2725,22 @@ function render() {
      Math.max(age, R) clamps in simulate). Slot 2 ages are on the
      spouse's timeline when a spouse start age is entered. */
   const sOffN = state.spouseAge > 0 ? state.startAge - state.spouseAge : 0;
+  const ssNote = document.getElementById("note-ss");
+  if (ssNote) {
+    const Rr = Math.round(state.retAge), sc = ssScale(Rr);
+    if (sc !== 1) {
+      const claim = Math.min(Rr, 70);
+      ssNote.textContent = Rr > 70
+        ? "Begins at retirement. Credits stop at 70, so the tool pays the " +
+          "age-70 amount, " + fmt$(state.ssAmt * sc) + "/yr."
+        : "Begins at retirement. Claimed at " + claim + " instead of " +
+          Math.max(state.ssAge, 62) + ", the tool pays " +
+          fmt$(state.ssAmt * sc) + "/yr (claiming factors, full retirement age 67).";
+    } else {
+      ssNote.textContent =
+        "Begins at retirement; the tool pays no income before retirement age.";
+    }
+  }
   [["note-pen",  state.penAmt  > 0 && state.penAge          < state.retAge],
    ["note-ss",   state.ssAmt   > 0 && state.ssAge           < state.retAge],
    ["note-pen2", state.pen2Amt > 0 && state.pen2Age + sOffN < state.retAge],
@@ -3288,8 +3395,12 @@ function buildReport() {
   add("Savings rate", state.savePct + "%", inert);
   add("Starting portfolio", fmt$(state.startBal));
   add("Legacy at end age", fmt$(state.legacy));
-  if (state.ssAmt > 0)
-    add("Social Security", span(state.ssAmt, state.ssAge, state.ssStop));
+  if (state.ssAmt > 0) {
+    const scR = ssScale(Math.round(state.retAge));
+    add("Social Security", span(state.ssAmt, state.ssAge, state.ssStop),
+      scR !== 1 ? "scaled to " + fmt$(state.ssAmt * scR) +
+        "/yr for claiming at " + Math.min(Math.round(state.retAge), 70) : "");
+  }
   if (state.penAmt > 0)
     add("Pension", span(state.penAmt, state.penAge, state.penStop) +
       colaNote(state.penCola));
@@ -3398,7 +3509,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.25i \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.26f \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
