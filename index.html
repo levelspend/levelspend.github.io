@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.26g -->
+<!-- LevelSpend build 2026.07.26h -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -547,7 +547,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26g</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.26h</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -2955,6 +2955,26 @@ function applyHash() {
 function scenarioLink() {
   return location.href.split("#")[0] + "#" + linkParams(state).join("&");
 }
+/* A scenario pasted onto the address of an ALREADY OPEN page changes only the
+   fragment, and browsers treat that as a move within the page: no reload, so
+   the single applyHash() at startup never runs again and nothing happens.
+   Reading it here makes typing or pasting a scenario behave like opening one.
+   The applied inputs are attached to THIS history entry (replaceState, address
+   left alone), so the visible scenario keeps matching the screen and Back
+   returns to whatever was on screen beforehand. Clearing the fragment by hand
+   is left alone on purpose: it names no inputs, so there is nothing to apply. */
+window.addEventListener("hashchange", () => {
+  if (!location.hash || location.hash.length < 2) return;
+  if (solveTween) solveTween.cancel();     // a running solve must not overwrite it
+  exampleEligible = false;                 // a scenario is someone's real numbers
+  applyHash();
+  ratchetNote = "";
+  buildInputs();                           // rebuild so drawers open as on a fresh load
+  render();
+  const snap = JSON.stringify(state);
+  try { history.replaceState(JSON.parse(snap), "", location.href); } catch (e) {}
+  lastSnap = snap;
+});
 /* ---- variable rate curve: strip renderer and painting ---- */
 const CURVE = { W: 800, H: 200, L: 44, R: 10, T: 10, B: 22 };
 function curveGeom() {
@@ -3564,7 +3584,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.26g \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.26h \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
