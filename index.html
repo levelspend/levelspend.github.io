@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.27c -->
+<!-- LevelSpend build 2026.07.27d -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -489,6 +489,8 @@
           <li>Enter the spouse's <b>age now</b> under <b>Spouse</b>. The
               start and stop ages on the spouse's Social Security and
               pension are then the spouse's own ages.</li>
+          <li>If a pension pays nothing to a survivor, give it a stop age
+              at the owner's assumed death.</li>
           <li>For a second earner, add the wages together while you are
               both working. If one of you retires later, enter the later
               earnings in an <b>Other income</b> slot with a stop age.
@@ -559,7 +561,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.27c</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.27d</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -3672,7 +3674,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.27c \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.27d \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
