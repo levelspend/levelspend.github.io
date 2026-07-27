@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.27d -->
+<!-- LevelSpend build 2026.07.28e -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -494,10 +494,9 @@
           <li>For a second earner, add the wages together while you are
               both working. If one of you retires later, enter the later
               earnings in an <b>Other income</b> slot with a stop age.
-              Those slots begin the year after their start age or your
-              retirement age, whichever is later, and their ages are on
-              your own timeline, so enter the stop as your age in that
-              year.</li>
+              Those slots begin at their start age or your retirement
+              age, whichever is later, and their ages are on your own
+              timeline.</li>
         </ol>
         <div class="head">Once a year</div>
         <ol>
@@ -519,6 +518,11 @@
     </div>
     <div class="head">Notes</div>
     <ol class="howto-notes">
+      <li>Payments happen at the start of each year: a
+          start age is the first age paid (or your retirement age, if
+          later), a stop age is the first age no longer paid, and the
+          chart's last row is the plan end, a balance with no
+          payment.</li>
       <li>Income with a start age before your retirement age is not paid
           until you retire.</li>
       <li>If your retirement age ends up past your Social Security start
@@ -561,7 +565,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.27d</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.28e</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -876,7 +880,8 @@ function planAt(R0, s) {
   const A0 = Number.isFinite(state.startAge) ? state.startAge : 20;
   const E  = Math.max(Number.isFinite(state.endAge) ? state.endAge : A0 + 1, A0 + 1);
   const R  = Math.min(Math.max(Number.isFinite(R0) ? R0 : A0, A0), E);
-  const m  = Math.max(0, Math.round(E - R));   // retirement payments, at R+1..R+m
+  const m  = Math.max(0, Math.round(E - R));   // retirement payments: one at the
+                                               // start of each year, R..E-1
   const contribution = state.salary * s;
   const workSpend = state.salary * (1 - s);
   const infl = state.inflPct / 100;
@@ -935,8 +940,8 @@ function planAt(R0, s) {
     if (amt === 0 || start > stop) return 0;
     let pv = 0;
     for (let age = Math.ceil(start); age <= stop; age++) {
-      const real = cola ? amt : amt * Math.pow(1 + infl, -(age - A0));
-      pv += real * discAt(age);
+      const real = cola ? amt : amt * Math.pow(1 + infl, -(age - 1 - A0));
+      pv += real * discAt(age - 1);
     }
     return pv;
   };
@@ -959,7 +964,7 @@ function planAt(R0, s) {
   let bal = state.startBal;
   for (let age = A0 + 1; age <= Rw; age++) {
     const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;   // this year's rate
-    bal = bal * (1 + rk) + contribution;
+    bal = (bal + contribution) * (1 + rk);
     workBal.push(bal);
   }
   const growthR = R > Rw ? growthAtFrac(growth, idx(R)) : growth[idx(R)];
@@ -969,7 +974,8 @@ function planAt(R0, s) {
      so s* can be inverted without re-running the accumulation:
        atRet = B0grow + salary * s * fvContrib */
   let fvContrib = 0;
-  for (let age = A0 + 1; age <= Rw; age++) fvContrib += growthR / growth[idx(age)];
+  for (let age = A0 + 1; age <= Rw; age++)
+    fvContrib += growthR / growth[idx(age - 1)];
   const B0grow = state.startBal * growthR;
 
   /* Level (tilted) retirement spending, solved by PV balance:
@@ -980,25 +986,25 @@ function planAt(R0, s) {
   const discR = discAt(R);                       // PV today of $1 at retirement
   let unitPV = 0;                                // PV today of a unit shaped stream
   for (let j = 0; j < m; j++)
-    unitPV += shapeW(j) * discAt(R + 1 + j);
+    unitPV += shapeW(j) * discAt(R + j);
   const pvLegacy = state.legacy * discAt(E);
   const C = unitPV > 0 ? (atRet * discR + pvInc - pvLegacy) / unitPV : 0;
 
   /* per-age income parts, shared by the level and no-borrow paths */
   const partsAt = age => {
     const p1 = (age >= penStart && age <= penStop)
-      ? (state.penCola  ? state.penAmt  : state.penAmt  * Math.pow(1 + infl, -(age - A0)))
+      ? (state.penCola  ? state.penAmt  : state.penAmt  * Math.pow(1 + infl, -(age - 1 - A0)))
       : 0;
     const p2 = (age >= pen2Start && age <= pen2Stop)
-      ? (state.pen2Cola ? state.pen2Amt : state.pen2Amt * Math.pow(1 + infl, -(age - A0)))
+      ? (state.pen2Cola ? state.pen2Amt : state.pen2Amt * Math.pow(1 + infl, -(age - 1 - A0)))
       : 0;
     const s1 = (age >= ssStart  && age <= ssStop)  ? state.ssAmt * ssScale(R) : 0;
     const s2 = (age >= ss2Start && age <= ss2Stop) ? state.ss2Amt * ss2Scale(R) : 0;
     const i1 = (age >= inc1Start && age <= inc1StopA)
-      ? (state.inc1Cola ? state.inc1Amt : state.inc1Amt * Math.pow(1 + infl, -(age - A0)))
+      ? (state.inc1Cola ? state.inc1Amt : state.inc1Amt * Math.pow(1 + infl, -(age - 1 - A0)))
       : 0;
     const i2 = (age >= inc2Start && age <= inc2StopA)
-      ? (state.inc2Cola ? state.inc2Amt : state.inc2Amt * Math.pow(1 + infl, -(age - A0)))
+      ? (state.inc2Cola ? state.inc2Amt : state.inc2Amt * Math.pow(1 + infl, -(age - 1 - A0)))
       : 0;
     return { p1, p2, s1, s2, i1, i2, inc: p1 + p2 + s1 + s2 + i1 + i2 };
   };
@@ -1016,8 +1022,8 @@ function planAt(R0, s) {
     while (k0 < m) {
       let unit = 0, incPV = 0, bestC = Infinity, bestK = k0 + 1;
       for (let f = k0 + 1; f <= m; f++) {
-        unit  += shapeW(f - 1) * discAt(R + f);
-        incPV += partsAt(R + f).inc * discAt(R + f);
+        unit  += shapeW(f - 1) * discAt(R + f - 1);
+        incPV += partsAt(R + f).inc * discAt(R + f - 1);
         const target = f === m ? state.legacy : 0;
         const c = (Bs * discAt(R + k0) + incPV - target * discAt(R + f)) / unit;
         if (c <= bestC + 1e-9) { bestC = c; bestK = f; }
@@ -1111,41 +1117,46 @@ function simulate() {
           atRet, C, steps, segC, S, workSpend, contribution, workBal } = p;
   const nWork = R - A0;
 
-  const rows = [{ age: A0, balance: state.startBal, phase: "work", anchor: true,
-                  wd: -contribution, inc: 0, pen: 0, ss: 0,
-                  p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend }];
-  for (let age = A0 + 1; age <= R; age++)
+  /* Rows are stamped at the age each payment happens: under start-of-year
+     timing, the row at age a carries the balance the moment you turn a
+     (before that instant's cash flow) and the payment made at a, which
+     funds the year from a to a+1. Working payments sit at A0..R-1, the
+     retirement withdrawals at R..E-1, and the final row at E is the plan
+     end: a balance point (the legacy) with no payment. Internally the
+     model still indexes each year by the age it ends at, so the row at
+     age a reads the year-end slot a+1. */
+  const rows = [];
+  for (let age = A0; age <= R - 1; age++)
     rows.push({ age, balance: workBal[idx(age)], phase: "work",
                 wd: -contribution, inc: 0, pen: 0, ss: 0,
                 p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend });
 
   let bal = atRet;
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
-  for (let age = R + 1; age <= E; age++) {
-    const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;
-    const { p1, p2, s1, s2, i1, i2, inc } = partsAt(age);
+  for (let age = R; age <= E - 1; age++) {
+    const ae = age + 1;                       // the year-end slot this row reads
+    const rk = growth[idx(ae)] / growth[idx(ae) - 1] - 1;
+    const { p1, p2, s1, s2, i1, i2, inc } = partsAt(ae);
     const pen = p1 + p2, ss = s1 + s2;
-    const level = (!state.allowBorrow && segC[age] !== undefined) ? segC[age] : C;
-    const spendYr = level * shapeW(age - R - 1);
+    const level = (!state.allowBorrow && segC[ae] !== undefined) ? segC[ae] : C;
+    const spendYr = level * shapeW(ae - R - 1);
     const wd = spendYr - inc;
-    bal = bal * (1 + rk) - wd;
-    if (bal < minBal) { minBal = bal; minAge = age; }
-    if (bal < -1e-6) { if (negFrom === null) negFrom = age; negTo = age; }
     rows.push({ age,
                 balance: Math.abs(bal) <= 1e-6 ? 0
                        : (state.allowBorrow ? bal : Math.max(bal, 0)),
                 phase: "retired",
                 wd, inc, pen, ss, p1, p2, s1, s2, i1, i2, spend: spendYr });
+    bal = (bal - wd) * (1 + rk);
+    if (bal < minBal) { minBal = bal; minAge = ae; }
+    if (bal < -1e-6) { if (negFrom === null) negFrom = ae; negTo = ae; }
   }
+  rows.push({ age: E, terminal: true,
+              balance: Math.abs(bal) <= 1e-6 ? 0
+                     : (state.allowBorrow ? bal : Math.max(bal, 0)),
+              phase: R < E ? "retired" : "work",
+              wd: 0, inc: 0, pen: 0, ss: 0,
+              p1: 0, p2: 0, s1: 0, s2: 0, spend: 0 });
   const feasible = minBal >= -1e-6;
-
-  if (nWork === 0) {
-    rows[0].phase = "retired";
-    rows[0].spend = S;
-    rows[0].wd = 0;      /* anchor is a point in time; the first year's flows
-                            are on the next row */
-    rows[0].inc = 0;
-  }
 
   /* s* is read by the savings-rate readout and its button, and skipped by
      the feasibility search, so it is computed only when it is asked for */
@@ -2057,7 +2068,7 @@ function renderStats(m) {
      rows the chart draws, so it reflects segmentation, tilt, and drawn
      years together. */
   function retSub() {
-    const rows = m.rows.filter(r => r.phase === "retired" && r.age > m.R);
+    const rows = m.rows.filter(r => r.phase === "retired" && !r.terminal);
     let lo = Infinity, hi = -Infinity, last = 0;
     for (const r of rows) {
       if (r.spend < lo) lo = r.spend;
@@ -2083,9 +2094,11 @@ function renderStats(m) {
   /* "steps up at 71" for one or two, "steps up each year from 87 to 95" for
      a run, and the two mixed where a plan has both */
   function stepPhrase(steps) {
+    /* internal step ages are year-end; on screen a step lands at the age
+       the new level is first paid, one year earlier */
     const parts = stepRuns(steps.slice(1)).map(g => g.run
-      ? "each year from " + g.steps[0].from + " to " + g.steps[g.steps.length - 1].from
-      : String(g.steps[0].from));
+      ? "each year from " + (g.steps[0].from - 1) + " to " + (g.steps[g.steps.length - 1].from - 1)
+      : String(g.steps[0].from - 1));
     return "steps up " + (/^\d/.test(parts[0]) ? "at " : "") + parts.join(", ");
   }
   function stat(l, v, c, sub) {
@@ -2159,11 +2172,11 @@ function renderPlanTable(m) {
                 "Guaranteed income", "Portfolio withdrawal"];
   const body = v.rows.map(r =>
     "<tr><td>" + r.age + "</td><td>" +
-    (r.phase === "retired" ? "retired" : "working") + "</td><td>" +
+    (r.terminal ? "plan end" : r.phase === "retired" ? "retired" : "working") + "</td><td>" +
     fmt$(r.balance) + "</td><td>" +
     fmt$(r.spend) + "</td><td>" +
     fmt$(r.inc || 0) + "</td><td>" +
-    fmt$(r.anchor ? 0 : r.wd) + "</td></tr>").join("");
+    fmt$(r.terminal ? 0 : r.wd) + "</td></tr>").join("");
   t.innerHTML =
     "<caption>Plan year by year, " + unit + " and before tax. A negative " +
     "withdrawal is money going into the portfolio: a contribution during the " +
@@ -2318,14 +2331,16 @@ function renderChart(m) {
      first payment age, earliest on the bottom, so a stream is never displaced
      by one that starts beneath it after it has begun; ties keep the form's
      field order; portfolio withdrawal on top; the stack sums to spending. */
-  const retRows = rows.filter(d => d.phase === "retired");
+  const retRows = rows.filter(d => d.phase === "retired" && !d.terminal);
   if (retRows.length > 1) {
+    /* each payment row's value spans its own year: from the row's age to
+       the next row's (the plan end closes the last year) */
+    const spanEnd = i => i + 1 < retRows.length ? retRows[i + 1].age : m.E;
     const stepPts = f => {
-      const y0 = Y2(f(retRows[0]));
-      const pts = [[X(m.R), y0], [X(retRows[0].age), y0]];
-      for (let i = 1; i < retRows.length; i++) {
+      const pts = [];
+      for (let i = 0; i < retRows.length; i++) {
         const y = Y2(f(retRows[i]));
-        pts.push([X(retRows[i - 1].age), y], [X(retRows[i].age), y]);
+        pts.push([X(retRows[i].age), y], [X(spanEnd(i)), y]);
       }
       return pts;
     };
@@ -2382,27 +2397,29 @@ function renderChart(m) {
       const act = retRows.filter(d => d[st.id] > 0);
       if (!act.length) continue;
       const a0s = act[0].age, a1s = act[act.length - 1].age;
-      // amount strip: stepped path along the stream's top over its active span
-      let pd = "M" + X(a0s - 1).toFixed(1) + " " + Y2(st.fHigh(act[0])).toFixed(1);
-      pd += " L" + X(a0s).toFixed(1) + " " + Y2(st.fHigh(act[0])).toFixed(1);
-      for (let i = 1; i < act.length; i++) {
+      /* amount strip: stepped path along the stream's top; each row's value
+         spans its own year, from the row's age to the next age */
+      const nextOf = i => i + 1 < act.length ? act[i + 1].age : a1s + 1;
+      let pd = "M" + X(a0s).toFixed(1) + " " + Y2(st.fHigh(act[0])).toFixed(1);
+      for (let i = 0; i < act.length; i++) {
         const y = Y2(st.fHigh(act[i])).toFixed(1);
-        pd += " L" + X(act[i - 1].age).toFixed(1) + " " + y +
-              " L" + X(act[i].age).toFixed(1) + " " + y;
+        pd += " L" + X(act[i].age).toFixed(1) + " " + y +
+              " L" + X(nextOf(i)).toFixed(1) + " " + y;
       }
       svg.appendChild(el("path", { d:pd, fill:"none", stroke:"transparent",
         "stroke-width":12, "class":"band-h", "data-stream":st.id }));
-      // start edge (only when not pinned to retirement)
-      if (a0s - 1 > m.R) {
-        svg.appendChild(el("line", { x1:X(a0s - 1), x2:X(a0s - 1),
+      // start edge at the first paid age (only when not pinned to retirement)
+      if (a0s > m.R) {
+        svg.appendChild(el("line", { x1:X(a0s), x2:X(a0s),
           y1:Y2(st.fHigh(act[0])), y2:Y2(st.fLow(act[0])),
           stroke:"transparent", "stroke-width":12,
           "class":"band-v", "data-stream":st.id, "data-side":"start" }));
       }
-      /* stop edge: always present. When the stream runs to the end age its
-         edge sits at the right frame; dragging it leftward CREATES the stop
-         (and dragging back to the frame restores runs-to-the-end). */
-      svg.appendChild(el("line", { x1:X(a1s), x2:X(a1s),
+      /* stop edge: always present, at the first age no longer paid (the
+         typed stop age). When the stream runs to the end age its edge sits
+         at the right frame; dragging it leftward CREATES the stop (and
+         dragging back to the frame restores runs-to-the-end). */
+      svg.appendChild(el("line", { x1:X(a1s + 1), x2:X(a1s + 1),
         y1:Y2(st.fHigh(act[act.length - 1])), y2:Y2(st.fLow(act[act.length - 1])),
         stroke:"transparent", "stroke-width":12,
         "class":"band-v", "data-stream":st.id, "data-side":"stop" }));
@@ -2415,7 +2432,7 @@ function renderChart(m) {
       const d0 = retRows[live[live.length - 1].i];
       const yT = Y2(fHigh(d0)), yB = Y2(fLow(d0));
       if (yB - yT < 15) return;
-      svg.appendChild(el("text", { x:X(d0.age) - 6, y:(yT + yB) / 2 + 4,
+      svg.appendChild(el("text", { x:X(d0.age + 1) - 6, y:(yT + yB) / 2 + 4,
         "text-anchor":"end", "font-size":11, fill:color,
         "class":"axis-label" }, txt));
     };
@@ -2486,13 +2503,15 @@ function renderChart(m) {
      drawing a riser, so jumps (retirement break, income steps) appear as
      honest gaps rather than vertical strokes */
   const stepPath = arr => {
+    const pay = arr.filter(d => !d.terminal);
     let p = "", prevY = null;
-    arr.forEach((d, i) => {
-      const px = X(d.age).toFixed(1), py = Y2(d.spend).toFixed(1);
-      if (i === 0) { p = "M" + px + " " + py; prevY = py; return; }
-      const pxPrev = X(arr[i - 1].age).toFixed(1);
-      if (py === prevY) p += " H" + px;
-      else { p += " M" + pxPrev + " " + py + " H" + px; prevY = py; }
+    pay.forEach((d, i) => {
+      const xA = X(d.age).toFixed(1);
+      const xB = X(i + 1 < pay.length ? pay[i + 1].age : d.age + 1).toFixed(1);
+      const py = Y2(d.spend).toFixed(1);
+      if (i === 0 || py !== prevY) p += (p ? " M" : "M") + xA + " " + py;
+      p += " H" + xB;
+      prevY = py;
     });
     return p;
   };
@@ -2502,7 +2521,7 @@ function renderChart(m) {
         stroke:"#3D6B9E", "stroke-width":1.6, "stroke-dasharray":"5 4",
         opacity:0.5, "pointer-events":"none", "class":"env-line" }));
   if (iR > 0)
-    svg.appendChild(el("path", { d:stepPath(rows.slice(0, iR + 1)), fill:"none",
+    svg.appendChild(el("path", { d:stepPath(rows.slice(0, iR)), fill:"none",
       stroke:"var(--accum)", "stroke-width":3.2, "pointer-events":"none" }));
   svg.appendChild(el("path", { d:stepPath(rows.slice(iR)), fill:"none",
     stroke:"#3D6B9E", "stroke-width":3.2, "pointer-events":"none" }));
@@ -2611,8 +2630,8 @@ function attachRateDrag() {
          no matter where it was grabbed), and the flow scale (so the axis
          can't shift under the cursor mid-drag) */
       const grabAge = Math.min(Math.max(ageAtX(e, rect), geom.x0 + 1), geom.x1);
-      const row = lastRows.find(d => d.age === grabAge && d.phase === "retired")
-               || lastRows.filter(d => d.phase === "retired")[0];
+      const row = lastRows.find(d => d.age === grabAge && d.phase === "retired" && !d.terminal)
+               || lastRows.filter(d => d.phase === "retired" && !d.terminal)[0];
       if (!row) return;
       dragMode = "amt"; layoutFreeze = true;
       dragMeta = {
@@ -2697,9 +2716,9 @@ function attachRateDrag() {
       const st = dragMeta.st;
       const off = sOffNow(st);       // slot-2 fields hold the spouse's OWN ages
       if (dragMeta.side === "start") {
-        /* the band's left edge sits at start-1 (primary timeline); dragging it
-           to age a means the first payment is at a+1, so the start age is a;
-           converted back to the spouse's own age for slot-2 streams */
+        /* the band's left edge sits at the first paid age, which is the
+           start age itself (primary timeline); converted back to the
+           spouse's own age for slot-2 streams */
         let v = Math.max(Math.round(age), state.retAge) - off;
         if (v === state[st.age]) return;
         state[st.age] = v;
@@ -2713,8 +2732,9 @@ function attachRateDrag() {
             / claimFactor(claimClamp(dragMeta.anchor.a0, sp), sp));
         }
       } else {
-        /* stop edge sits at the last paid age (primary timeline); at or past
-           the end age means "runs to the end" = the 0 sentinel */
+        /* stop edge sits at the first age no longer paid, which is the stop
+           age itself (primary timeline); at or past the end age means
+           "runs to the end" = the 0 sentinel */
         let v = Math.round(age);
         const startNow = Math.max(state[st.age] + off, state.retAge) + 1;
         v = Math.max(v, startNow);
@@ -2750,6 +2770,7 @@ function attachTooltip() {
     if (!d) { hide(); return; }
     const retired = d.phase === "retired";
     const color = retired ? "#3D6B9E" : "#0E7C5B";
+    const phaseTxt = d.terminal ? "plan end" : retired ? "retired" : "working";
 
     const cross = svg.querySelector("#cross");
     cross.setAttribute("visibility", "visible");
@@ -2761,7 +2782,7 @@ function attachTooltip() {
     dot.setAttribute("stroke", color);
 
     tip.innerHTML =
-      '<div class="t-age">Age ' + d.age + ' · ' + (retired ? "retired" : "working") + '</div>' +
+      '<div class="t-age">Age ' + d.age + ' · ' + phaseTxt + '</div>' +
       row("Balance", '<b style="color:' + color + '">' + fmt$(d.balance) + "</b>") +
       (lastEnv ? (() => {
           const lo = lastEnv.lo.find(r => r.age === age);
@@ -2771,7 +2792,7 @@ function attachTooltip() {
                 + fmt$(lo.balance) + " to " + fmt$(hi.balance) + "</span>")
             : "";
         })() : "") +
-      (d.anchor ? ""
+      (d.terminal ? ""
         : retired
         ? row(d.wd >= 0 ? "Portfolio withdrawal" : "Surplus reinvested",
               fmt$(Math.abs(d.wd))) +
@@ -2780,8 +2801,9 @@ function attachTooltip() {
             ? row(TIP_LBL[id], '<span style="color:#3D6B9E">' + fmt$(d[id]) + "</span>")
             : "").join("")
         : row("Contribution", fmt$(Math.abs(d.wd)))) +
-      row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>") +
-      (lastEnv && d.phase === "retired"
+      (d.terminal ? "" :
+      row("Spending", '<b style="color:#8A5A2E">' + fmt$(d.spend) + "</b>")) +
+      (lastEnv && d.phase === "retired" && !d.terminal
         ? (() => {
             const lo = lastEnv.lo.find(r => r.age === age);
             const hi = lastEnv.hi.find(r => r.age === age);
@@ -2932,9 +2954,9 @@ function render() {
     warn.innerHTML = "<b>Spending steps up.</b> Level spending after retirement would require " +
       "borrowing, so the plan holds spending as level as possible instead: " +
       stepRuns(m.steps).map(g => g.run
-        ? "then rising each year through age " + g.steps[g.steps.length - 1].to
+        ? "then rising each year until age " + g.steps[g.steps.length - 1].to
         : "$" + Math.round(g.steps[0].c).toLocaleString("en-US") +
-          " through age " + g.steps[0].to).join(", ") + "." +
+          " until age " + g.steps[0].to).join(", ") + "." +
       (bridge !== null
         ? " Adding roughly $" + bridge.toLocaleString("en-US") +
           " to the portfolio today would make fully level spending feasible."
@@ -3493,24 +3515,25 @@ if (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON) {
     if (b && !b.disabled) b.classList.add("solve-cue");
   }
 }
-function applyPreset(obj, btn, flashText) {
+/* No confirmation flash here: pressing these repaints the whole form and
+   chart, and the "Example numbers" marker appears, so the screen itself is
+   the feedback. The copy-link button keeps its "copied!" because a
+   clipboard write is the one action with nothing else to show. */
+function applyPreset(obj) {
   ratchetNote = "";
   Object.assign(state, JSON.parse(JSON.stringify(obj)));
   try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   buildInputs();          // rebuild so drawers re-collapse appropriately
   render();
   pushHistory();
-  const t = btn.textContent;
-  btn.textContent = flashText;
-  setTimeout(() => { btn.textContent = t; }, 1200);
 }
 document.getElementById("resetBtn").addEventListener("click", e => {
   exampleEligible = true;
-  applyPreset(DEFAULTS, e.target, "restored");
+  applyPreset(DEFAULTS);
 });
 document.getElementById("retiredBtn").addEventListener("click", e => {
   exampleEligible = true;
-  applyPreset(RETIRED, e.target, "loaded");
+  applyPreset(RETIRED);
 });
 document.getElementById("clearBtn").addEventListener("click", e => {
   /* zero the dollars IN PLACE: ages, rates, spouse timeline, and Advanced
@@ -3520,7 +3543,7 @@ document.getElementById("clearBtn").addEventListener("click", e => {
   for (const k of ["startBal","salary","savePct","penAmt","ssAmt",
                    "pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"])
     blank[k] = 0;
-  applyPreset(blank, e.target, "cleared");
+  applyPreset(blank);
   /* salary is grayed when already retired; land on the portfolio instead */
   const first = document.getElementById("v-salary");
   const tgt = first && !first.disabled
@@ -3634,9 +3657,9 @@ function buildReport() {
      "Portfolio withdrawal"].map(h => "<th>" + h + "</th>").join("") +
     "</tr></thead><tbody>" +
     sim.rows.map(r => "<tr><td>" + r.age + "</td><td>" +
-      (r.phase === "retired" ? "retired" : "working") + "</td><td>" +
+      (r.terminal ? "plan end" : r.phase === "retired" ? "retired" : "working") + "</td><td>" +
       fmt$(r.balance) + "</td><td>" + fmt$(r.spend) + "</td><td>" +
-      fmt$(r.inc || 0) + "</td><td>" + fmt$(r.anchor ? 0 : r.wd) +
+      fmt$(r.inc || 0) + "</td><td>" + fmt$(r.terminal ? 0 : r.wd) +
       "</td></tr>").join("") + "</tbody></table>";
   const dateStr = new Date().toLocaleDateString(undefined,
     { year: "numeric", month: "long", day: "numeric" });
@@ -3674,7 +3697,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.27d \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.28e \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
