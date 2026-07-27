@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.28e -->
+<!-- LevelSpend build 2026.07.28f -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -277,10 +277,10 @@
       title="Copy a link that reopens the tool with your current inputs. The link is the scenario's only storage; bookmark it or paste it anywhere to keep it.">copy scenario link</button>
     <button class="mast-btn" id="clearBtn"
       title="Zero all dollar amounts so you can enter your own numbers">clear</button>
-    <button class="mast-btn" id="resetBtn"
-      title="Load the working example numbers">working example</button>
     <button class="mast-btn" id="retiredBtn"
       title="Load the retired example numbers">retired example</button>
+    <button class="mast-btn" id="resetBtn"
+      title="Load the working example numbers">working example</button>
     <button class="mast-btn" id="printBtn"
       title="Open your browser's print dialog with a two-page plan report: inputs and results, then the chart. Choose landscape in the dialog for a larger chart, or Save as PDF to keep a dated copy with a live scenario link.">print report</button>
   </span>
@@ -565,7 +565,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.28e</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.28f</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -3697,7 +3697,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.28e \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.28f \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
