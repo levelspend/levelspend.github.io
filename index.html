@@ -1354,8 +1354,7 @@ const fmtPct = v => !Number.isFinite(v) ? "\u2013" : v.toFixed(1) + "%";
    One stated shock, placed only where the tool already had room for it. When
    a solve button has nothing left to do, its first line says so and its
    second line carries the stressed answer. With no working years both solve
-   buttons are inapplicable, so the Working spending slot carries the stressed
-   spending instead of a dash. Neither site adds to the default view. */
+   buttons are inapplicable, so the figure sits above the chart instead. */
 const CRASH_DROP = 0.30;
 const CRASH_PCT  = Math.round(CRASH_DROP * 100) + "% loss";
 const CRASH_TXT  = "after " + CRASH_PCT + ": ";
@@ -2014,25 +2013,27 @@ function refreshInputs(m) {
 /* ---------------- stats ---------------- */
 function renderStats(m) {
   const saveYr = state.salary * state.savePct / 100;
-  document.getElementById("stats").innerHTML =
-    (m.nWork === 0
-      ? stat("Savings", "–", "var(--ink-soft)", "no working years")
-      : stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
-             fmt$(saveYr / 12) + "/mo")) +
-    stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
-    (m.nWork === 0
-      ? (() => {
-          const cp = crashStatParts(m);
-          return cp ? stat(cp.lbl, cp.val, "var(--ink)", cp.sub)
-                    : stat("Working spending", "–", "var(--ink-soft)",
-                           "no working years");
-        })()
-      : stat("Working spending", fmt$(m.workSpend), "var(--accum)",
-             "income − savings")) +
-    (m.nRet === 0
-      ? stat("Retirement spending", "–", "var(--ink-soft)",
-             "no retirement years")
-      : stat("Retirement spending", fmt$(m.S), "var(--decum)", retSub()));
+  const retStat = m.nRet === 0
+    ? stat("Retirement spending", "–", "var(--ink-soft)",
+           "no retirement years")
+    : stat("Retirement spending", fmt$(m.S), "var(--decum)", retSub());
+  if (m.nWork === 0) {
+    /* With no working years the retirement age is clamped to age now, so
+       Portfolio at R is the starting portfolio echoed back, and Savings and
+       Working spending do not apply. The row carries the two computed
+       figures, with the shock beside the level it is measured against. */
+    const cp = crashStatParts(m);
+    document.getElementById("stats").innerHTML =
+      retStat + (cp ? stat(cp.lbl, cp.val, "var(--ink)", cp.sub) : "");
+  } else {
+    document.getElementById("stats").innerHTML =
+      stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
+           fmt$(saveYr / 12) + "/mo") +
+      stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
+      stat("Working spending", fmt$(m.workSpend), "var(--accum)",
+           "income − savings") +
+      retStat;
+  }
   /* sub-line for the Retirement spending stat. The big number stays the
      first year of the drawn plan (both solves aim at it); when the drawn
      rows vary, the sub carries where spending goes. Pure slider tilt is
