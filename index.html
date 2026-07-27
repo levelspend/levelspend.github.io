@@ -1349,6 +1349,44 @@ const fmt$ = v => !Number.isFinite(v) ? "\u2013"
 /* the percent counterpart of fmt$: no readout prints a non-finite number,
    whatever the caller hands it */
 const fmtPct = v => !Number.isFinite(v) ? "\u2013" : v.toFixed(1) + "%";
+
+/* ---- flexibility readout ------------------------------------------------
+   One stated shock, placed only where the tool already had room for it. When
+   a solve button has nothing left to do, its first line says so and its
+   second line carries the stressed answer. With no working years both solve
+   buttons are inapplicable, so the Working spending slot carries the stressed
+   spending instead of a dash. Neither site adds to the default view. */
+const CRASH_DROP = 0.30;
+const CRASH_PCT  = Math.round(CRASH_DROP * 100) + "% loss";
+const CRASH_TXT  = "after " + CRASH_PCT + ": ";
+function withDrop(fn) {
+  const saved = state.startBal;
+  state.startBal = saved * (1 - CRASH_DROP);
+  try { return fn(); } finally { state.startBal = saved; }
+}
+function setSolve(leadId, valId, lead, val) {
+  const l = document.getElementById(leadId);
+  if (l) l.textContent = lead;
+  document.getElementById(valId).textContent = val;
+}
+function crashStatParts(m) {
+  if (m.nWork !== 0) return null;
+  const c = withDrop(() => simulate().S);
+  if (!Number.isFinite(c) || !(m.S > 0)) return null;
+  return { lbl: "After a " + CRASH_PCT,
+           val: fmt$(c),
+           sub: Math.round((1 - c / m.S) * 100) + "% less" };
+}
+function crashSaveTxt() {
+  const cs = withDrop(() => simulate().sStar);
+  if (!Number.isFinite(cs)) return CRASH_TXT + "no rate works";
+  return CRASH_TXT + "save " + fmtPct(Math.min(100, Math.max(0, cs * 100)));
+}
+function crashRetTxt() {
+  const r = withDrop(() => solveRStar());
+  return r === null ? CRASH_TXT + "no age works"
+                    : CRASH_TXT + "retire at " + r;
+}
 function fmtAxis(v) {
   const a = Math.abs(v), s = v < 0 ? "−" : "";
   if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 1 : 2) + "M";
@@ -1546,14 +1584,14 @@ function buildInputs() {
       numField("retAge", "Retirement age", 1) +
       '<button class="solve solve-ret" id="setRStar" ' +
         'title="Sets the retirement age at which spending comes closest to level through the end age, at the current savings rate">' +
-        'solve for level spending' +
+        '<span id="rLead">solve for level spending</span>' +
         '<span class="solve-val" id="rStar"></span></button>' +
     '</div>' +
     '<div class="dv-row">' +
       pctField("savePct", "Savings rate", 0.5) +
       '<button class="solve solve-save" id="setSStar" ' +
         'title="Sets the savings rate so spending stays level through the end age, at the current retirement age">' +
-        'solve for level spending' +
+        '<span id="sLead">solve for level spending</span>' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
     '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
@@ -1907,10 +1945,12 @@ function refreshInputs(m) {
   /* solve readouts */
   const setBtn = document.getElementById("setSStar");
   if (m.nWork === 0) {
-    document.getElementById("sStar").textContent = "n/a (no working years)";
+    setSolve("sLead", "sStar", "solve for level spending",
+             "n/a (no working years)");
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else if (m.nRet === 0) {
-    document.getElementById("sStar").textContent = "n/a (no retirement years)";
+    setSolve("sLead", "sStar", "solve for level spending",
+             "n/a (no retirement years)");
     setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
   } else {
     /* s* is non-finite exactly when there is no household income to save
@@ -1925,17 +1965,21 @@ function refreshInputs(m) {
     setBtn.style.opacity = degen ? "0.5" : "";
     setBtn.style.cursor = degen ? "default" : "pointer";
     const sTarget = Math.min(100, Math.max(0, m.sStar * 100));
-    document.getElementById("sStar").textContent =
-      m.sStar <= 0 ? "balance + income suffice"
+    /* level state moves to the first line, freeing the second for the shock */
+    const sLevel = !(m.sStar <= 0) && !degen
+                   && Math.abs(state.savePct - sTarget) < 0.05;
+    setSolve("sLead", "sStar",
+      sLevel ? "spending is level" : "solve for level spending",
+      sLevel ? crashSaveTxt()
+      : m.sStar <= 0 ? "balance + income suffice"
       : degen ? "n/a (no household income)"
-      : Math.abs(state.savePct - sTarget) < 0.05 ? "spending is level"
-      : "setting savings: " + fmtPct(m.sStar * 100);
+      : "setting savings: " + fmtPct(m.sStar * 100));
   }
   /* already retired (retirement age at or before age now): both solve
      buttons and the salary row are inapplicable, so they gray in place;
      everything un-grays the moment the retire line moves past age now */
   const rBtn = document.getElementById("setRStar");
-  let rTxt;
+  let rTxt, rLead = "solve for level spending";
   if (m.nWork === 0) {
     rTxt = "n/a (already retired)";
     rBtn.disabled = true; rBtn.style.opacity = "0.5"; rBtn.style.cursor = "default";
@@ -1950,14 +1994,15 @@ function refreshInputs(m) {
          closest approximation. The tolerance is a sub-pixel gap: $100 or
          0.1% of working spending, whichever is larger. */
       const lvlEps = Math.max(100, 0.001 * Math.abs(m.workSpend));
-      rTxt = Math.abs(levelGapAt(state.retAge)) <= lvlEps
+      rLead = Math.abs(levelGapAt(state.retAge)) <= lvlEps
         ? "spending is level" : "spending is roughly level";
+      rTxt = crashRetTxt();
     }
     else {
       rTxt = "setting retirement: " + Rs;
     }
   }
-  document.getElementById("rStar").textContent = rTxt;
+  setSolve("rLead", "rStar", rLead, rTxt);
   const salBox = document.getElementById("v-salary");
   if (salBox) {
     salBox.disabled = m.nWork === 0;
@@ -1976,7 +2021,12 @@ function renderStats(m) {
              fmt$(saveYr / 12) + "/mo")) +
     stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
     (m.nWork === 0
-      ? stat("Working spending", "–", "var(--ink-soft)", "no working years")
+      ? (() => {
+          const cp = crashStatParts(m);
+          return cp ? stat(cp.lbl, cp.val, "var(--ink)", cp.sub)
+                    : stat("Working spending", "–", "var(--ink-soft)",
+                           "no working years");
+        })()
       : stat("Working spending", fmt$(m.workSpend), "var(--accum)",
              "income − savings")) +
     (m.nRet === 0
