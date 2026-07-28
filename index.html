@@ -208,10 +208,14 @@
               color:var(--ink-soft); font-family:inherit; }
   .mast-btn:hover { color:var(--ink); border-color:var(--ink-soft); }
   .mast-btn:disabled { opacity:0.45; cursor:default; }
+  /* The masthead name and tagline are h1 and h2 so the page has a heading
+     outline for crawlers. Everything a browser applies to a heading by
+     default (margins, bold, its own size) is overridden here, so the two
+     render exactly as the spans they replaced. */
   .site-name { font-family:Charter,Georgia,serif; font-size:21px; font-weight:600;
-               letter-spacing:0.2px; color:var(--ink); }
+               letter-spacing:0.2px; color:var(--ink); margin:0; }
   .site-tag { font-family:Charter,Georgia,serif; font-style:italic; font-size:13px;
-              color:var(--ink-soft); }
+              font-weight:400; color:var(--ink-soft); margin:0; }
   @media (max-width: 900px) {
     .cols { flex-direction:column; }
     .left { flex:1 1 auto; width:100%; }
@@ -281,8 +285,8 @@
 <body>
 <div class="wrap">
 <div class="masthead">
-  <span class="site-name">LevelSpend</span>
-  <span class="site-tag">a level-spending retirement solver</span>
+  <h1 class="site-name">LevelSpend</h1>
+  <h2 class="site-tag">a level-spending retirement solver</h2>
   <span class="mast-actions">
     <button class="mast-btn" id="shareBtn"
       title="Copy a link that reopens the tool with your current inputs. The link is the scenario's only storage; bookmark it or paste it anywhere to keep it.">copy scenario link</button>
