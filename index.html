@@ -1,9 +1,16 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.28g -->
+<!-- LevelSpend build 2026.07.28k -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="What level of real spending is consistent with your resources? Drag the chart, then solve for the retirement age or savings rate that levels it.">
+<link rel="canonical" href="https://levelspend.github.io/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23FAFAF7'/><path d='M4 9 L28 27 L4 27 Z' fill='%23A57F2C'/><path d='M4 17 L28 17' stroke='%231C2433' stroke-width='4' stroke-linecap='round'/></svg>">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://levelspend.github.io/">
+<meta property="og:title" content="LevelSpend: a level-spending retirement solver">
+<meta property="og:description" content="What level of real spending is consistent with your resources? Drag the chart, then solve for the retirement age or savings rate that levels it.">
 <title>LevelSpend: a level-spending retirement solver</title>
 <style>
   :root {
@@ -569,7 +576,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.28g</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.28k</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -3242,7 +3249,7 @@ function hasGaps(map) {
     const g = curveGeom();
     const px = (ev.clientX - r.left) / r.width * CURVE.W;
     const py = (ev.clientY - r.top) / r.height * CURVE.H;
-    const age = Math.round(g.A0 + (px - CURVE.L) /
+    const age = Math.ceil(g.A0 + (px - CURVE.L) /
       (CURVE.W - CURVE.L - CURVE.R) * (g.E - g.A0));
     const val = g.yMax - (py - CURVE.T) /
       (CURVE.H - CURVE.T - CURVE.B) * (g.yMax - g.yMin);
@@ -3447,7 +3454,7 @@ function tiltPaintAt(age, val) {
     const g = tiltGeom();
     const px = (ev.clientX - r.left) / r.width * TILT.W;
     const py = (ev.clientY - r.top) / r.height * TILT.H;
-    const age = Math.round(g.A0 + (px - TILT.L) /
+    const age = Math.ceil(g.A0 + (px - TILT.L) /
       (TILT.W - TILT.L - TILT.R) * (g.E - g.A0));
     const val = g.yMax - (py - TILT.T) /
       (TILT.H - TILT.T - TILT.B) * (g.yMax - g.yMin);
@@ -3707,7 +3714,7 @@ function buildReport() {
       'working years, a reinvested surplus during retirement.</div>' +
     yearTable(m) + "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.28g \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.28k \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
