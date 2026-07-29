@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.29g -->
+<!-- LevelSpend build 2026.07.29h -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -355,6 +355,21 @@
     .rep-chart { break-inside: avoid; page-break-inside: avoid; }
     .rep-stripblk { break-inside: avoid; page-break-inside: avoid; }
     .rep-page2 { break-before: page; page-break-before: always; }
+    /* The year table is the screen-reader plan table reprinted. One line per
+       year at this size fits a sheet or two, and the header repeats on each
+       because it lives in a thead. Tighter than the input tables and
+       right-aligned on the figures, since the point of it is columns of
+       numbers to compare down the page or copy into a spreadsheet. */
+    .rep-page3 { break-before: page; page-break-before: always; }
+    .rep-years { border-collapse:collapse; width:100%; font-size:10px; }
+    .rep-years caption { caption-side:top; text-align:left; font-size:11px;
+      color:#444; margin:2px 0 8px; }
+    .rep-years th, .rep-years td { padding:1.5px 6px; border-bottom:1px solid #EDEDED;
+      text-align:right; font-variant-numeric:tabular-nums; }
+    .rep-years th { border-bottom:1px solid #999; font-weight:600; text-align:right; }
+    .rep-years th:first-child, .rep-years td:first-child,
+    .rep-years th:nth-child(2), .rep-years td:nth-child(2) { text-align:left; }
+    .rep-years thead { display:table-header-group; }
     .rep-foot { position:fixed; bottom:0; left:0; right:0; font-size:9.5px;
       color:#666; text-align:center; }
     #report .stats { margin:4px 0 2px; }
@@ -663,7 +678,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.29f</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.29h</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -3743,10 +3758,19 @@ document.getElementById("clearBtn").addEventListener("click", e => {
    drawing strips. Built fresh at print time; the browser's own Save as PDF
    is the PDF feature, so this costs no dependencies. The link carries the
    whole scenario; paper readers are assumed to return to the PDF for it. */
+/* the plan table is kept current by render(); rebuilt here anyway so the
+   printed copy cannot lag the rest of the report if anything ever changes
+   the order those two run in */
+function planTableHTML() {
+  const t = document.getElementById("planTable");
+  return t ? t.innerHTML : "";
+}
+
 function buildReport() {
   const host = document.getElementById("report");
   if (!host) return;
   const m = simulate();
+  renderPlanTable(m);
   const D = DEFAULTS;
   const rowsH = [];
   const add = (l, v, note) => rowsH.push("<tr><td>" + l + "</td><td>" + v +
@@ -3869,8 +3893,16 @@ function buildReport() {
     (state.tiltOn ? '<div class="rep-stripblk"><div class="rep-h3">Spending tilt curve</div>' +
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
+    /* Year by year is the same table screen readers get, reprinted. Building
+       it here a second time is how the hover box and the chart came to
+       disagree about colour, so this reads the one that already exists. Its
+       caption carries the unit and the note about negative withdrawals, and
+       it follows the future-dollars lens without this code knowing about it. */
+    (planTableHTML() ? '<div class="rep-page3">' +
+      '<div class="rep-h2">Year by year</div>' +
+      '<table class="rep-years">' + planTableHTML() + "</table></div>" : "") +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.29f \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.29h \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
