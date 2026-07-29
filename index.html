@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.29e -->
+<!-- LevelSpend build 2026.07.29f -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -640,7 +640,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.29e</span>
+  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.29f</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -1485,6 +1485,15 @@ function crashRetTxt() {
   const r = withDrop(() => solveRStar());
   return r === null ? CRASH_TXT + "no age works"
                     : CRASH_TXT + "retire at " + r;
+}
+/* at-retirement value label baseline. Working case (R > A0): below the
+   dot. Retired case (R === A0): above the dot, clamped to stay inside
+   the plot, so a balance at the very top cannot push the label into the
+   "Retire at" row above (a $1 portfolio hits the dust floor on balMax,
+   which removes the 6% headroom and puts the point exactly at the top
+   margin). */
+function atRetLabelY(yPt, top, isWork) {
+  return isWork ? yPt + 14 : Math.max(yPt - 8, top + 13);
 }
 function fmtAxis(v) {
   const a = Math.abs(v), s = v < 0 ? "−" : "";
@@ -2607,7 +2616,7 @@ function renderChart(m) {
   svg.appendChild(el("line", { x1:X(m.R), x2:X(m.R), y1:mT, y2:plotB,
     "class":"s-ink", "stroke-width":1, "stroke-dasharray":"4 3" }));
   svg.appendChild(el("text", { x:X(m.R), y:mT-8, "text-anchor":"middle",
-    "font-size":12.5, "class":"axis-label f-ink" }, "Retire " + m.R));
+    "font-size":12.5, "class":"axis-label f-ink" }, "Retire at " + m.R));
   /* draggable: a visible handle where the line meets the age axis, plus an
      invisible wide hit strip along the whole line, so grabbing anywhere on
      "retire" drags the retirement age */
@@ -2619,7 +2628,7 @@ function renderChart(m) {
   svg.appendChild(el("circle", { cx:X(m.R), cy:Y1(m.atRet), r:3.5,
     "class":"f-panel s-ink", "stroke-width":1.6 }));
   svg.appendChild(el("text", { x:X(m.R) + (m.R > m.A0 ? 8 : 6),
-    y:Y1(m.atRet) + (m.R > m.A0 ? 14 : -8),
+    y:atRetLabelY(Y1(m.atRet), mT, m.R > m.A0),
     "text-anchor":"start", "font-size":12.5,
     "class":"axis-label f-ink" }, fmtAxis(m.atRet)));
 
@@ -3762,7 +3771,7 @@ function buildReport() {
       '<div class="rep-strip">' + vb("tiltStrip", "0 0 800 192") + "</div></div>" : "") +
     "</div>" +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.29e \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend build 2026.07.29f \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
