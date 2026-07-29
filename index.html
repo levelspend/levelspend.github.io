@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.29f -->
+<!-- LevelSpend build 2026.07.29g -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -198,6 +198,26 @@
     color:var(--warn-ink);
   }
   #feasWarn b { color:var(--bad); }
+  /* ---- level row ----
+     The figures the tool exists to compare lead as a pair, with the relation
+     between them as a glyph in the middle; the supporting figures follow at
+     reading size. The glyph is a .stat with a blank label, so it lines up with
+     its neighbours on its own. Two groups, left-aligned, separated by more
+     space than either uses internally: proximity does the grouping. Not
+     space-between — that spaces the figures equally, which reads as unrelated
+     items, and it re-flows the row every time a dragged handle changes the
+     width of a number. Left-aligned, the row holds still. The print report
+     clones this markup, so these rules serve both. */
+  .stats:has(.lvl-pair) { align-items:flex-start; gap:44px; }
+  .lvl-pair { display:flex; align-items:flex-start; gap:18px; }
+  .lvl-pair .num { font-size:28px; line-height:1.1; }
+  .lvl-rel { min-width:0; }
+  .lvl-rel .num { font-size:19px; line-height:1.62;
+                  font-family:Charter,Georgia,serif; }
+  .lvl-rest { display:flex; gap:18px; padding-top:2px; }
+  .lvl-rest .num { font-size:15px; }
+  .lvl-rest .stat { min-width:0; }
+  .lvl-rest .lbl { white-space:nowrap; }
   /* example marker: same banner grammar as the warning, but calm paper-and-ink
      colors so it reads as a note, not an alarm */
   #exampleNote {
@@ -2092,11 +2112,13 @@ function refreshInputs(m) {
   const rBtn = document.getElementById("setRStar");
   let rTxt, rLead = "solve for level spending";
   if (m.nWork === 0) {
+    lastRStar = null;
     rTxt = "n/a (already retired)";
     rBtn.disabled = true; rBtn.style.opacity = "0.5"; rBtn.style.cursor = "default";
   } else {
     rBtn.disabled = false; rBtn.style.opacity = ""; rBtn.style.cursor = "pointer";
     const Rs = solveRStar();
+    lastRStar = Rs;
     if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
     else if (clampVal("retAge", Rs) === state.retAge) {
       /* pressing would not move the retirement age. If spending is truly
@@ -2123,21 +2145,44 @@ function refreshInputs(m) {
 }
 
 /* ---------------- stats ---------------- */
+/* The retirement age that solves for level spending, as refreshInputs last
+   computed it. The stats row needs it to tell a gap that can be closed from
+   one that cannot: refreshInputs always runs first in the render path, so
+   reading it here costs nothing and cannot disagree with the button. */
+let lastRStar = null;
 function renderStats(m) {
   const saveYr = state.salary * state.savePct / 100;
+  /* one extra class onto a stat's wrapper */
+  const as = (cls, h) => h.replace('class="stat"', 'class="stat ' + cls + '"');
   const retStat = m.nRet === 0
     ? stat("Retirement spending", "–", "var(--ink-soft)",
            "no retirement years")
     : stat("Retirement spending", fmt$(m.S), "var(--decum)", retSub());
   if (m.nWork === 0) {
-    /* With no working years the retirement age is clamped to age now, so
-       Portfolio at R is the starting portfolio echoed back, and Savings and
-       Working spending do not apply. The row carries the two computed
-       figures, with the shock beside the level it is measured against. */
+    /* No working years, so the tool answers a different question: not "how
+       much should I save" but "how much can I take, and how safe is it".
+
+       The shock belongs to spending, not to the withdrawal it used to sit
+       beside, so it takes the pair — the same grammar the working row uses,
+       where two states of one quantity face each other across a glyph. An
+       arrow rather than a relation, because this is not a comparison to be
+       resolved but one figure becoming another under a loss, and in ink-soft
+       rather than red: a downside scenario is not a plan that has failed.
+       Pairing also gives "20% less" the referent it lacked at the end of the
+       row, and restores the equal weight a comparison needs.
+
+       Portfolio at R is the starting portfolio echoed back, so it appears
+       only as the withdrawal rate's denominator, and Savings and Working
+       spending do not apply. */
     const cp = crashStatParts(m);
     document.getElementById("stats").innerHTML =
-      retStat + (cp ? stat(cp.lbl, cp.val, "var(--ink)", cp.sub) : "");
-  } else {
+      '<div class="lvl-pair">' + retStat +
+        (cp ? as("lvl-rel", stat("\u00a0", "\u2192", "var(--ink-soft)", "")) +
+              stat(cp.lbl, cp.val, "var(--ink)", cp.sub) : "") +
+      '</div>' +
+      '<div class="lvl-rest">' + wdStat() + '</div>';
+  } else if (m.nRet === 0) {
+    /* nothing to compare working spending against; the flat row stands */
     document.getElementById("stats").innerHTML =
       stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
            fmt$(saveYr / 12) + "/mo") +
@@ -2145,6 +2190,39 @@ function renderStats(m) {
       stat("Working spending", fmt$(m.workSpend), "var(--accum)",
            "income − savings") +
       retStat;
+  } else {
+    /* The pair, then the rest. Level is the same test the retirement-age solve
+       button uses, with the same tolerance, so the two cannot disagree: a gap
+       under $100 or 0.1% of working spending, whichever is larger, is a
+       sub-pixel step on the chart. */
+    const gap = m.S - m.workSpend;
+    /* Three states, not two. The savings-rate solve is continuous and lands
+       on level exactly. The retirement-age solve can only return a whole
+       year, so its residual gap is a step, not a failure: sitting on the
+       solved age means no whole age comes closer, which is as level as that
+       control goes. Calling that "not level" was wrong. */
+    const eps = Math.max(100, 0.001 * Math.abs(m.workSpend));
+    const mode = Math.abs(gap) <= eps ? "level"
+      : (lastRStar !== null && clampVal("retAge", lastRStar) === state.retAge)
+        ? "best" : "off";
+    /* The glyph reads left to right, working against retirement, so an
+       unsolved plan says which way the step goes rather than merely that
+       there is one. Entities, because this lands in innerHTML. */
+    const rel = mode === "level" ? "=" : mode === "best" ? "\u2248"
+      : gap < 0 ? "&gt;" : "&lt;";
+    document.getElementById("stats").innerHTML =
+      '<div class="lvl-pair">' +
+        stat("Working spending", fmt$(m.workSpend), "var(--accum)",
+             "income \u2212 savings") +
+        as("lvl-rel", stat("\u00a0", rel,
+             mode === "off" ? "var(--bad)" : "var(--good)", "")) +
+        retStat +
+      '</div>' +
+      '<div class="lvl-rest">' +
+        stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
+             fmt$(saveYr / 12) + "/mo") +
+        stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
+      '</div>';
   }
   /* sub-line for the Retirement spending stat. The big number stays the
      first year of the drawn plan (both solves aim at it); when the drawn
@@ -2187,6 +2265,24 @@ function renderStats(m) {
       ? "each year from " + (g.steps[0].from - 1) + " to " + (g.steps[g.steps.length - 1].from - 1)
       : String(g.steps[0].from - 1));
     return "steps up " + (/^\d/.test(parts[0]) ? "at " : "") + parts.join(", ");
+  }
+  /* First year off the portfolio, for the already-retired row. The RATE is the
+     value, not the dollars: it is the figure a reader computes in their head
+     anyway and the one that makes this plan comparable to a 4% rule or a VPW
+     table — and before any guaranteed income starts the dollar amount IS the
+     whole of spending, so leading with it would print the headline number
+     twice. The balance it is a share of rides along in the sub, which saves
+     echoing the starting portfolio as a stat of its own. A negative
+     withdrawal is a surplus going back in, which the tooltip already names
+     that way. */
+  function wdStat() {
+    const r = m.rows.find(x => x.phase === "retired" && !x.terminal);
+    if (!r || !Number.isFinite(r.wd)) return "";
+    const amt = Math.abs(r.wd), lbl = r.wd < 0
+      ? "Surplus reinvested" : "First-year withdrawal";
+    if (!(state.startBal > 0)) return stat(lbl, fmt$(amt), "var(--decum)", "");
+    return stat(lbl, fmtPct(amt / state.startBal * 100), "var(--decum)",
+                fmt$(amt) + " of " + fmtAxis(state.startBal));
   }
   function stat(l, v, c, sub) {
     return '<div class="stat"><span class="lbl">' + l + '</span>' +
