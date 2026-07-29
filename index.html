@@ -417,14 +417,14 @@
         <span id="curveMsg" style="color:var(--ink-soft);"></span>
       </div>
       <div style="font-size:11px; color:var(--ink-soft); line-height:1.45; margin-top:6px;">
-        Draw with the mouse, or type: the box holds the drawn years as a
-        series of annual real returns in percent, one per year, starting at
-        the age shown. Years you leave out are not in it; they follow the
-        rate settings on the left. Read it out, edit it, paste a new one over it, then
-        press apply series. Values are kept to a tenth of a point between
-        -60% and 69%; anything rounded, clamped, or dropped is reported next
-        to the button. Undrawn years follow the rate settings on the left;
-        drawn years override them. The chart above recomputes as you draw.
+        Draw the curve, or type into the box below: it holds the drawn
+        years as a series of annual real returns in percent, one per year,
+        starting at the age shown. Undrawn years follow the rate settings
+        on the left; drawn years override them, and the chart above
+        recomputes as you draw. Edit the series or paste a new one over it,
+        then press apply series; values are kept to a tenth of a point
+        between -60% and 69%, and anything rounded, clamped, or dropped is
+        reported next to the button.
         Spending is computed as if the whole path were known from the start,
         so a historical series shows what foresight of those years would have
         supported, not what someone living through them could have known to
@@ -448,17 +448,16 @@
       <svg id="tiltStrip" width="100%" viewBox="0 0 800 192"
            style="display:block; margin-top:6px; touch-action:none; cursor:crosshair;"></svg>
       <div style="font-size:11px; color:var(--ink-soft); line-height:1.45;">
-        Draw with the mouse: each retirement year's change in spending from
-        the year before, in percent. Undrawn years follow the Spending tilt
-        setting on the left; drawn years override it. The chart above
-        recomputes as you draw. Values left
-        of the dashed retirement marker are
-        stored but inactive; move the retirement age to bring them into the
-        plan. Before the marker the dotted line shows the tilt setting and the
-        dashes show drawn values, both inactive: no tilt applies during the
+        Draw: each year's change in spending from the year before, in
+        percent. The first retirement year is the anchor that later changes
+        are measured from, so no change applies to it. Undrawn years follow
+        the Spending tilt setting on the left; drawn years override it, and
+        the chart above recomputes as you draw. Values left of the dashed
+        retirement marker are stored but inactive (the dotted line is the
+        setting, the dashes are drawn values): no tilt applies during the
         working years, where spending does not change from one year to the
-        next. The first retirement year is the anchor that later changes are
-        measured from, so no change applies to it. Connect points fills the
+        next. Move the retirement age to bring stored values into the
+        plan. Connect points fills the
         undrawn years between two drawn ones with a straight line. The y-axis
         range above is a lens: narrowing it never changes
         stored values, and values outside it draw pinned at the edge.
