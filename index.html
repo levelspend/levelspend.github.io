@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.07.29h -->
+<!-- LevelSpend build 2026.07.30z -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -77,7 +77,6 @@
     padding:16px 22px;
   }
   .wrap { max-width:1280px; margin:0 auto; }
-  .serif { font-family:Charter,Georgia,"Times New Roman",serif; }
   .cols { display:flex; gap:22px; align-items:flex-start; }
   .left  { flex:0 0 360px; }
   .right { flex:1 1 auto; min-width:0; position:sticky; top:16px; }
@@ -118,11 +117,54 @@
   /* a labeled field; rows of fields laid out in a grid */
   .field { display:flex; flex-direction:column; gap:2px; min-width:0; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:9px 12px; margin-bottom:4px; }
-  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px 12px; margin-bottom:4px; }
-  .grid-aal { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:9px 12px; margin-bottom:4px; }
-  .grid-inc { display:grid; grid-template-columns:1.6fr 0.7fr 0.7fr; gap:9px 12px; margin-bottom:4px; }
+  /* max-content on the two age columns means each track is exactly as wide as
+     its own label wants to be, measured in whatever font the reader has, so a
+     label cannot wrap and no fraction needs tuning. Everything left over goes
+     to household income, which is the field that can use it: it holds the
+     widest amount on the panel and a monthly figure beside it. The age boxes
+     are given an explicit width below, or their intrinsic input width would
+     set these tracks instead of the labels. */
+  .grid-aal { display:grid; grid-template-columns:max-content max-content 1fr;
+              gap:9px 12px; margin-bottom:4px; }
+  /* every age box on the panel, matched to the others and sized for three
+     digits: age now and end age, the start and stop ages on each income row,
+     and the spouse's age. The child selector reaches only these: a dollar box
+     is further down, inside .money and .frame, and a percent box inside .pct.
+     The retirement age box is not here; it shares its row with a solve button
+     and is sized to that instead. */
+  .grid-aal > .field > .numbox,
+  .grid-inc > .field > .numbox,
+  .grid2 > .field > .numbox { width:48px; }
+  /* same shape as the top row: each age track is its own label, and the amount
+     field takes everything left over. */
+  .grid-inc { display:grid; grid-template-columns:1fr max-content max-content;
+              gap:9px 12px; margin-bottom:4px; }
   .money { display:flex; align-items:center; gap:3px; }
-  .money > .numbox { text-align:right; }
+  /* The input and the monthly figure share this frame. flex-basis 0 makes it
+     the residual item, so the $ takes its own width and the frame takes the
+     rest; the input fills the frame at width:100%. Do not put flex-wrap on
+     .money: a wrapping row breaks lines from base sizes before any shrinking,
+     and with a base size of 100% the input would take a line to itself and
+     strand the $ above it. */
+  .money > .frame { flex:1 1 0; min-width:57px; position:relative; }
+  /* Monthly echo, inside the input, at the left of it. A dollar box is much
+     wider than the digits it holds, because the label above it sets the track
+     width, so the figure goes in that unused space rather than taking a line of
+     its own. It sits at the interior's left edge, one place for every field, so
+     the figures line up down the panel; the amount stays right-aligned, and the
+     equals sign closes the gap between them. Nothing in script positions it:
+     updateEcho only decides how much of it to show, by measuring whether the
+     amount has grown into the space. pointer-events:none leaves the box
+     clickable. */
+  .echo { position:absolute; left:8px; top:0; bottom:0;
+          display:flex; align-items:center; pointer-events:none;
+          font-size:10.5px; color:var(--ink-soft); white-space:nowrap;
+          font-variant-numeric:tabular-nums; }
+  /* offscreen ruler. updateEcho dresses it in the box's own font and measures
+     the amount with it, rather than estimating, before deciding whether the
+     figure still has room. */
+  .probe { position:absolute; visibility:hidden; white-space:pre;
+           top:-9999px; left:-9999px; }
   .pct { display:flex; align-items:center; gap:3px; }
   .rate-sep { border-top:1px solid var(--grid); padding-top:10px; margin-top:12px; }
   .rate-row { display:grid; grid-template-columns:0.45fr 1.55fr; gap:9px 12px;
@@ -146,13 +188,32 @@
   .adv .adv.sub { margin:2px 0 6px 12px; }
   .adv .adv.sub summary { font-weight:500; font-size:11.5px; }
   /* solve buttons */
-  .dv-row { display:grid; grid-template-columns:1fr 1.35fr; gap:9px 12px;
+  /* Both solver rows share one grid so the two button faces line up. The first
+     column is max-content, which is the wider of the two labels, so the boxes
+     stop being as wide as the buttons are tall and the width goes to the
+     buttons instead. The boxes need the explicit width below: an input with
+     width:100% contributes its intrinsic size to a max-content track, which
+     would open the column wider than it is now rather than narrower. */
+  .dv-row { display:grid; grid-template-columns:max-content 1fr; gap:6px 12px;
             align-items:stretch; margin-bottom:6px; }
+  /* The boxes hold two digits and four characters; 96px was set when the column
+     was sized to the button's height rather than its content. The labels are
+     nowrap so the two rows stay one line each — with them free to wrap, the
+     column collapses to the longest word and "AGE" drops onto a second line
+     under "RETIREMENT". */
+  .dv-row > .field > .numbox, .dv-row .pct > .numbox { width:60px; }
+  .dv-row .lbl { white-space:nowrap; }
   .dv-row .solve { align-self:end; }
+  /* min-height reserves the two-line face. A settled button carries only a
+     lead, and without the reservation the row would jump every time a drag
+     crossed the solved point: 6+6 padding, a 14.4px lead, a 13.2px sub. The
+     column centres that lone line in the space instead of stranding it at the
+     top. */
   .solve {
     padding:6px 10px; border-radius:4px; cursor:pointer; color:var(--btn-ink);
     font-family:inherit; font-size:12px; font-weight:600; line-height:1.2;
-    border:none; text-align:left;
+    border:none; text-align:left; box-sizing:border-box; min-height:42px;
+    display:flex; flex-direction:column; justify-content:center;
     box-shadow:0 2px 5px rgba(var(--shadow-rgb),0.4);
     transition:transform 0.06s, box-shadow 0.06s;
   }
@@ -185,6 +246,24 @@
   .field.inert .lbl { cursor:default; }
   .solve-val { display:block; font-weight:400; font-size:11px; opacity:.92;
                font-variant-numeric:tabular-nums; margin-top:2px; }
+  /* ---- settled ----
+     A third dress, between the live gradient and the disabled dimming, and
+     with it the panel keeps one rule: a gradient means pressing writes a
+     value, a bordered card means the answer is already in the box, dimming
+     means there is no action to take. The dimming is deliberately not reused
+     here — it is the language of "unavailable", and this state arrives at the
+     exact moment the user succeeds. Four states wore the gradient while doing
+     nothing, and they spanned both buttons. */
+  .solve.settled { background:none; color:var(--ink); cursor:default;
+                   border:1px solid var(--rule); box-shadow:none; }
+  .solve.settled:hover, .solve.settled:active {
+    transform:none; box-shadow:none; background:none; }
+  .solve.settled .solve-val { opacity:1; color:var(--ink-soft); }
+  /* the tick sits on the lead line rather than a row of its own, and is drawn
+     rather than inserted because the lead's textContent is rewritten every
+     render */
+  .solve.settled > span:first-child::before {
+    content:"\2713\00a0\00a0"; color:var(--good); }
   /* stats */
   .stats { display:flex; gap:24px; flex-wrap:wrap; padding-bottom:12px;
            margin-bottom:8px; border-bottom:1px solid var(--grid); }
@@ -215,27 +294,61 @@
   .lvl-rel .num { font-size:19px; line-height:1.62;
                   font-family:Charter,Georgia,serif; }
   .lvl-rest { display:flex; gap:18px; padding-top:2px; }
-  .lvl-rest .num { font-size:15px; }
+  .lvl-rest .num { font-size:15px; white-space:nowrap; }
   .lvl-rest .stat { min-width:0; }
   .lvl-rest .lbl { white-space:nowrap; }
-  /* example marker: same banner grammar as the warning, but calm paper-and-ink
-     colors so it reads as a note, not an alarm */
+  .lvl-pair .lbl { white-space:nowrap; }
+  /* Example marker: calm paper-and-ink colors so it reads as a note, not an
+     alarm, at the same scale as the masthead buttons beside it.
+
+     Centred in the masthead and out of flow, which is the whole point: that row
+     is already holding its height for the title and the buttons, so the marker
+     appears and vanishes without moving anything on the page. It used to sit
+     above the inputs and collapse with a max-height transition — an animation
+     whose only job was to soften a shift that no longer happens, so it is gone
+     too.
+
+     Out of flow means it can collide, and the budget is tight: title and
+     tagline run about 337px, the action group about 414px, the chip about
+     110px. The binding constraint is NOT the sum of those: centred, the chip
+     hangs half its width either side of the midpoint, so the test is that
+     W/2 + 55 clears the action group at W - 414. That wants W > 938px of
+     masthead, about 982px of viewport once the body padding is counted, which
+     is why the number below is 1000 and not the ~915 the widths alone suggest.
+     Measured too low once already, and the chip landed on the buttons.
+
+     Below 1000px it rejoins normal flow on its own masthead line, where
+     the row is already wrapping and a shift costs nothing. Copy length IS the
+     breakpoint, so a longer wording has to raise the number with it.
+
+     Two words, and both are load-bearing. "Scenario" is this tool's noun for a
+     configured state everywhere else — scenario link, scenario report — and
+     what is loaded is not only numbers but ages, income streams and toggles.
+     "Example" carries the entire warning: if it is an example it is not the
+     reader's, and the two buttons that load these sit in the same row saying
+     "working example" and "retired example", so the chip is plainly their
+     status.
+
+     Earlier drafts said "Replace with yours" and then "not yours". Both were
+     cut. The instruction is homework the how-to below already assigns, and the
+     negation only restates what "example" means — a reader inattentive enough
+     to miss that word would not be caught by either. A label in a bordered chip
+     does not need to argue with itself, which is also why the phrase is no
+     longer bold: the border already separates it. */
   #exampleNote {
-    background:var(--note-bg); border:1px solid var(--rule);
-    border-radius:4px; padding:9px 12px; margin-bottom:10px;
-    font-size:12.5px; line-height:1.4; color:var(--ink);
-    overflow:hidden; max-height:64px;
-    transition:max-height .28s ease, opacity .18s ease,
-               padding .28s ease, margin-bottom .28s ease,
-               border-width .28s ease;
+    position:absolute; left:50%; top:50%; transform:translate(-50%, -50%);
+    white-space:nowrap; background:var(--note-bg);
+    border:1px solid var(--rule); border-radius:4px; padding:3px 10px;
+    font-size:11.5px; line-height:1.35; color:var(--ink);
   }
-  /* hiding collapses smoothly instead of snapping the layout upward */
-  #exampleNote.ex-hidden {
-    max-height:0; opacity:0; padding-top:0; padding-bottom:0;
-    margin-bottom:0; border-width:0;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    #exampleNote { transition:none; }
+  /* display, not opacity. Centred and out of flow there is no difference, but
+     below the breakpoint the note is a flex line of its own, and an opacity-0
+     line still holds its row — the marker vanished while its gap stayed. An
+     opacity-0 note is also still announced by a screen reader. */
+  #exampleNote.ex-hidden { display:none; }
+  @media (max-width:1000px) {
+    #exampleNote { position:static; transform:none; flex-basis:100%;
+                   white-space:normal; margin:2px 0 0; }
   }
   /* Screen-reader only. The chart's own figures, as a table, for a reader
      that can use neither an SVG nor a hover tooltip. It occupies no space and
@@ -293,10 +406,31 @@
   .bal-handle { cursor:ns-resize; touch-action:none; }
   .bal-handle:hover { stroke-width:3; }
   #chart text { pointer-events:none; }   /* no text is interactive; never block a drag */
-  .masthead { display:flex; align-items:baseline; gap:12px; margin:2px 2px 12px;
-              flex-wrap:wrap; row-gap:6px; }
-  .mast-actions { margin-left:auto; display:flex; gap:8px; }
-  .mast-btn { font-size:11px; padding:3px 9px; border:1px solid var(--rule);
+  .masthead { position:relative; display:flex; align-items:baseline;
+              gap:12px; margin:2px 2px 12px; flex-wrap:wrap; row-gap:6px; }
+  .mast-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  /* Five chips of equal weight hid the fact that there are only two kinds of
+     action here: three replace what is on screen, two carry it away. The stem
+     does the grouping a gap alone cannot, and it verbs all three labels at
+     once — which is what "working example" never did on its own. "Start from"
+     rather than "Load" because the third chip is not a thing you load: "load
+     no amounts" does not parse, "start from no amounts" does.
+
+     Dropping the word "example" also settles a reported misreading, where
+     "working example" landed as the software sense — a minimal working
+     example — rather than the employment one. Nothing in "working / retired"
+     can be read that way, so the natural order comes back: the one that loads
+     by default first. It used to run second to dodge that collision.
+
+     "no amounts" rather than "clear": the button keeps ages, rates and
+     Advanced settings on purpose, so anything promising a blank page would be
+     the one dishonest word in the row. Everything the shortened faces drop is
+     in their titles. */
+  .mast-lbl { font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+              color:var(--ink-soft); white-space:nowrap; }
+  .mast-rule { width:1px; height:16px; background:var(--rule); margin:0 4px; }
+  .mast-btn { font-size:11px; padding:3px 9px; white-space:nowrap;
+              border:1px solid var(--rule);
               background:none; border-radius:4px; cursor:pointer;
               color:var(--ink-soft); font-family:inherit; }
   .mast-btn:hover { color:var(--ink); border-color:var(--ink-soft); }
@@ -382,17 +516,20 @@
 <div class="masthead">
   <h1 class="site-name">LevelSpend</h1>
   <h2 class="site-tag">a level-spending retirement solver</h2>
+  <div id="exampleNote" class="ex-hidden">Example scenario</div>
   <span class="mast-actions">
-    <button class="mast-btn" id="shareBtn"
-      title="Copy a link that reopens the tool with your current inputs. The link is the scenario's only storage; bookmark it or paste it anywhere to keep it.">copy scenario link</button>
-    <button class="mast-btn" id="clearBtn"
-      title="Zero all dollar amounts so you can enter your own numbers">clear</button>
-    <button class="mast-btn" id="retiredBtn"
-      title="Load the retired example numbers">retired example</button>
-    <button class="mast-btn" id="resetBtn"
-      title="Load the working example numbers">working example</button>
-    <button class="mast-btn" id="printBtn"
-      title="Open your browser's print dialog with a two-page plan report: inputs and results, then the chart. Choose landscape in the dialog for a larger chart, or Save as PDF to keep a dated copy with a live scenario link.">print report</button>
+    <span class="mast-lbl">Start from</span>
+    <button class="mast-btn" id="resetBtn" aria-label="Start from the working example scenario"
+      title="Load the example scenario for someone still working and saving">working</button>
+    <button class="mast-btn" id="retiredBtn" aria-label="Start from the retired example scenario"
+      title="Load the example scenario for someone already retired">retired</button>
+    <button class="mast-btn" id="clearBtn" aria-label="Start from no amounts: zero every dollar entered"
+      title="Zero every dollar amount so you can enter your own. Ages, rates, the spouse timeline and Advanced settings are kept.">no amounts</button>
+    <span class="mast-rule"></span>
+    <button class="mast-btn" id="shareBtn" aria-label="Copy scenario link"
+      title="Copy a link that reopens the tool with your current inputs. The link is the scenario's only storage; bookmark it or paste it anywhere to keep it.">copy link</button>
+    <button class="mast-btn" id="printBtn" aria-label="Print scenario report"
+      title="Open your browser's print dialog with a two-page scenario report: inputs and results, then the chart. Choose landscape in the dialog for a larger chart, or Save as PDF to keep a dated copy with a live scenario link.">print</button>
   </span>
 </div>
 <div class="cols">
@@ -409,7 +546,7 @@
       <div class="stats" id="stats"></div>
       <div id="unitNote"></div>
       <div id="chartBox">
-        <svg id="chart" width="100%" role="img" aria-label="Plan chart"></svg>
+        <svg id="chart" width="100%" role="img" aria-label="Scenario chart"></svg>
         <div id="tip"></div>
       </div>
       <table id="planTable" class="sr-only"></table>
@@ -492,7 +629,7 @@
         setting, the dashes are drawn values): no tilt applies during the
         working years, where spending does not change from one year to the
         next. Move the retirement age to bring stored values into the
-        plan. Connect points fills the
+        scenario. Connect points fills the
         undrawn years between two drawn ones with a straight line. The y-axis
         range above is a lens: narrowing it never changes
         stored values, and values outside it draw pinned at the edge.
@@ -510,13 +647,13 @@
       <div>
         <div class="head">If you are still working</div>
         <ol>
-          <li>Enter, in today's dollars: <b>age now</b>, <b>plan end age</b>
-              (an age you are unlikely to outlive; couples see <i>If you
-              are planning as a couple</i>), <b>household income</b> (all
-              wages, minus Social Security and Medicare tax),
-              <b>starting portfolio</b>, and any <b>legacy</b> you want
-              left at the plan end. Enter 0 for legacy to spend
-              everything.</li>
+          <li>Enter, in today's dollars: <b>age now</b>, <b>end age</b>
+              (the age the scenario runs to, one you are unlikely to outlive;
+              couples see <i>If you are planning as a couple</i>),
+              <b>household income</b> (all wages, minus Social Security
+              and Medicare tax), <b>starting portfolio</b>, and any
+              <b>legacy</b> you want left at the end age. Enter 0 for
+              legacy to spend everything.</li>
           <li>Enter <b>Social Security</b> and <b>pension</b> in today's
               dollars, with the ages they begin. Enter 0 if you have none.
               Take the Social Security amount and its age together from
@@ -526,10 +663,9 @@
           <li>A spouse's benefits go under <b>Spouse</b> (see <i>If you
               are planning as a couple</i>).</li>
           <li>Set the <b>portfolio growth rate</b>: a real return, after
-              inflation, historically roughly 2% to 7% depending on the
-              era and starting valuations. No one knows it in advance, so
-              try several values and watch how far the spending level
-              moves.</li>
+              inflation, historically roughly 2% to 7%. No one knows it
+              in advance, so try several values and watch how far the
+              spending level moves.</li>
           <li>Enter the <b>retirement age</b> you have in mind and your
               <b>savings rate</b>, the share of household income you
               currently save. These two are yours to choose; everything
@@ -544,16 +680,16 @@
         </ol>
         <div class="head">If you are already retired</div>
         <ol>
-          <li>Press <b>retired example</b> (top right) and replace its
+          <li>Press <b>Start from: retired</b> (top right) and replace its
               numbers with yours. Or set <b>retirement age</b> equal to
               your <b>age now</b>. Either way, the <b>household income</b>
               field and the two <b>solve</b> buttons gray out: with no
               working years they do not apply.</li>
-          <li>Enter, in today's dollars: <b>age now</b>, <b>plan end
-              age</b> (an age you are unlikely to outlive; couples see
-              <i>If you are planning as a couple</i>), <b>starting
-              portfolio</b>, and any <b>legacy</b> you want left at the
-              plan end. Enter 0 to spend everything.</li>
+          <li>Enter, in today's dollars: <b>age now</b>, <b>end age</b>
+              (the age the scenario runs to, one you are unlikely to outlive;
+              couples see <i>If you are planning as a couple</i>),
+              <b>starting portfolio</b>, and any <b>legacy</b> you want
+              left at the end age. Enter 0 to spend everything.</li>
           <li>Enter <b>Social Security</b> and <b>pension</b> with their
               start ages. For a benefit already being paid, enter your
               <b>age now</b> as its start age; any earlier age gives the
@@ -561,15 +697,12 @@
               and its age together from one line of your SSA statement,
               and see Notes about earnings that have stopped.</li>
           <li>Set the <b>portfolio growth rate</b>: a real return, after
-              inflation, historically roughly 2% to 7% depending on the
-              era and starting valuations. No one knows it in advance,
-              so try several values.</li>
+              inflation, historically roughly 2% to 7%. No one knows it
+              in advance, so try several values.</li>
           <li>Read <b>Retirement spending</b> above the chart: the level
               annual amount, before tax, that your portfolio plus future
-              income can sustain through the plan end age. Beside it,
-              <b>After a 30% loss</b> shows the level after a 30%
-              portfolio drop: the spending cut you would need to absorb
-              if the market fell that far tomorrow.</li>
+              income can sustain through the end age, at the growth rate
+              you entered.</li>
         </ol>
       </div>
       <div>
@@ -586,15 +719,15 @@
               start age at your age now, stop age at the first age
               without a paycheck.</li>
           <li>The tool computes one level spending amount for every year
-              from now to the plan end age. In years when the paycheck
+              from now to the end age. In years when the paycheck
               falls short of it, the difference is a portfolio
               withdrawal. There is nothing extra to enter.</li>
         </ol>
         <div class="head">If you are planning as a couple</div>
         <ol>
-          <li>The tool runs on one timeline: yours, and the plan end age
-              is the end of the plan, not a date of death. Set it to your
-              age in the year the plan should end; if your spouse is
+          <li>The tool runs on one timeline: yours, and the end age
+              is the end of the scenario, not a date of death. Set it to your
+              age in the year the scenario should end; if your spouse is
               younger and plans further, that is your age in the year
               they reach their horizon.</li>
           <li>Enter the spouse's <b>age now</b> under <b>Spouse</b>. The
@@ -614,18 +747,13 @@
           <li>Update <b>age now</b> and <b>starting portfolio</b>, and
               anything else that has changed.</li>
           <li>Still working: press <b>solve</b> next to <b>savings
-              rate</b> again. The new rate is your savings target for the
-              year ahead. Or re-solve <b>retirement age</b> and watch
-              your feasible date move.</li>
+              rate</b> again. The new rate levels spending from the
+              portfolio you actually have. Or re-solve <b>retirement
+              age</b> and watch your feasible date move.</li>
           <li>Retired: the new <b>Retirement spending</b> is your
               spending level for the year ahead.</li>
-          <li>The 30% loss readout is the whole plan recomputed with
-              the portfolio 30% smaller. To preview any other drop,
-              reduce <b>starting portfolio</b> yourself by that
-              percentage.</li>
-          <li>Press <b>copy scenario link</b> (top right) to make a
-              bookmarkable link of your inputs. Nothing is stored
-              otherwise.</li>
+          <li>Press <b>copy link</b> (top right) to make a bookmarkable
+              link of your inputs. Nothing is stored otherwise.</li>
         </ol>
       </div>
     </div>
@@ -634,7 +762,7 @@
       <li>Payments happen at the start of each year: a
           start age is the first age paid (or your retirement age, if
           later), a stop age is the first age no longer paid, and the
-          chart's last row is the plan end, a balance with no
+          chart's last row is the scenario end, a balance with no
           payment.</li>
       <li>Income with a start age before your retirement age is not paid
           until you retire.</li>
@@ -650,9 +778,15 @@
       <li>Household income is entered minus Social Security and Medicare
           tax because that tax ends with the paycheck; leaving it out
           keeps working and retirement spending comparable.</li>
+      <li>Income amounts are per year, not per month. The dollar boxes
+          accept arithmetic, so a benefit quoted as $2,853 a month can be
+          typed as 2853*12, and two salaries as 85000+42000. An income box
+          shows the monthly equivalent to the left of the amount you typed.
+          An empty or zero box shows nothing, and an amount long enough to
+          need the room takes it back, dropping the equals sign first.</li>
       <li>Two more income streams on your own timeline are under <b>More
           income</b> in <b>Advanced</b>. A stop age ends a stream early;
-          leave it blank to run to the plan end. For a pension with no
+          leave it blank to run to the end age. For a pension with no
           inflation adjustment, see <b>Advanced</b>.</li>
       <li>If income starts late and borrowing is off, spending can step
           up during retirement; the caption under <b>Retirement
@@ -663,11 +797,6 @@
           income tax, which this tool does not model. Nor does it model
           account types, required minimum distributions, or
           randomness in returns.</li>
-      <li>It answers one question: given an assumed return, what level of
-          real spending is consistent with your resources. That is why
-          the yearly revisit is part of the method: re-solving against
-          the portfolio you actually have makes the growth rate a
-          setting you turn rather than a forecast you are held to.</li>
     </ol>
   </div>
 </div>
@@ -678,7 +807,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.29h</span>
+  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.07.30z</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -1345,7 +1474,7 @@ function clampVal(key, v) {
     }
     if (nv > state.endAge - 1) {
       state.endAge = nv + 1;
-      ratchetNote = "Retirement and plan end ages raised to keep the ages in order.";
+      ratchetNote = "Retirement and end ages raised to keep the ages in order.";
     }
     return nv;
   }
@@ -1353,7 +1482,7 @@ function clampVal(key, v) {
     const nv = Math.max(Math.round(v), state.startAge);
     if (nv > state.endAge) {
       state.endAge = nv;
-      ratchetNote = "Plan end age raised to keep the ages in order.";
+      ratchetNote = "End age raised to keep the ages in order.";
     }
     return nv;
   }
@@ -1487,42 +1616,34 @@ const fmt$ = v => !Number.isFinite(v) ? "\u2013"
 /* the percent counterpart of fmt$: no readout prints a non-finite number,
    whatever the caller hands it */
 const fmtPct = v => !Number.isFinite(v) ? "\u2013" : v.toFixed(1) + "%";
+/* a yearly amount as its monthly equivalent, for the sub-line under a stat.
+   Empty rather than an en dash when there is no number: a stat with nothing to
+   say drops its sub-line instead of printing a placeholder under the headline. */
+const perMo = v => Number.isFinite(v) ? fmt$(v / 12) + "/mo" : "";
 
-/* ---- flexibility readout ------------------------------------------------
-   One stated shock, placed only where the tool already had room for it. When
-   a solve button has nothing left to do, its first line says so and its
-   second line carries the stressed answer. With no working years both solve
-   buttons are inapplicable, so the figure sits above the chart instead. */
-const CRASH_DROP = 0.30;
-const CRASH_PCT  = Math.round(CRASH_DROP * 100) + "% loss";
-const CRASH_TXT  = "after " + CRASH_PCT + ": ";
-function withDrop(fn) {
-  const saved = state.startBal;
-  state.startBal = saved * (1 - CRASH_DROP);
-  try { return fn(); } finally { state.startBal = saved; }
-}
-function setSolve(leadId, valId, lead, val) {
+/* No stress scenario lives here, and that is deliberate.
+
+   A shock magnitude is not arithmetic. Picking 30% — or VPW's 50% — asserts
+   that a particular loss is the one to plan around, and nothing the user
+   typed supports that claim: not their allocation, not their horizon, not
+   their tolerance. Reporting consequences of it ("level again by retiring at
+   63") goes further still and recommends. Both are the work of a financial
+   planner, and this is not one.
+
+   Nothing is lost by leaving it out. Anyone who wants to see a 30% loss types
+   a starting portfolio 30% lower; the sandbox has always answered that, and
+   the answer is then theirs rather than ours. */
+function setSolve(leadId, valId, lead, val, mode) {
   const l = document.getElementById(leadId);
   if (l) l.textContent = lead;
   document.getElementById(valId).textContent = val;
-}
-function crashStatParts(m) {
-  if (m.nWork !== 0) return null;
-  const c = withDrop(() => simulate().S);
-  if (!Number.isFinite(c) || !(m.S > 0)) return null;
-  return { lbl: "After a " + CRASH_PCT,
-           val: fmt$(c),
-           sub: Math.round((1 - c / m.S) * 100) + "% less" };
-}
-function crashSaveTxt() {
-  const cs = withDrop(() => simulate().sStar);
-  if (!Number.isFinite(cs)) return CRASH_TXT + "no rate works";
-  return CRASH_TXT + "save " + fmtPct(Math.min(100, Math.max(0, cs * 100)));
-}
-function crashRetTxt() {
-  const r = withDrop(() => solveRStar());
-  return r === null ? CRASH_TXT + "no age works"
-                    : CRASH_TXT + "retire at " + r;
+  const btn = l && l.closest(".solve");
+  if (!btn) return;
+  const off = mode === "off", settled = mode === "settled";
+  btn.classList.toggle("settled", settled);
+  btn.disabled = off;
+  btn.style.opacity = off ? "0.5" : "";
+  btn.style.cursor = (off || settled) ? "default" : "pointer";
 }
 /* at-retirement value label baseline. Working case (R > A0): below the
    dot. Retired case (R === A0): above the dot, clamped to stay inside
@@ -1550,25 +1671,74 @@ function niceTicks(max, target) {
 }
 
 /* ---------------- input form ---------------- */
+
+/* A dollar box may hold a small arithmetic expression: 2853*12 for a figure
+   quoted monthly, 85000+42000 for two salaries, a sum of account balances for
+   the starting portfolio. Recursive descent rather than eval, for two reasons
+   that both bite. Multiplication has to bind tighter than addition or
+   20000+3000*12 quietly reads as 276000 instead of 56000. And a comma is the
+   JavaScript comma operator, so evaluating 48,000 as source yields 0; here the
+   commas are stripped before a digit is ever read. Anything the grammar does
+   not accept returns NaN, which is the path clampVal already treats as a
+   rejected entry and reverts. Only the dollar boxes reach this. The rest are
+   type="number", where the browser blanks invalid text before script sees it. */
+function parseMoney(src) {
+  const s = String(src).replace(/[,\s$]/g, "").replace(/[xX\u00D7]/g, "*");
+  let i = 0;
+  const digit = c => c >= "0" && c <= "9";
+  function primary() {
+    if (s[i] === "(") { i++; const v = expr(); if (s[i] !== ")") return NaN; i++; return v; }
+    if (s[i] === "-") { i++; return -primary(); }
+    if (s[i] === "+") { i++; return primary(); }
+    const st = i;
+    while (digit(s[i])) i++;
+    if (s[i] === ".") { i++; while (digit(s[i])) i++; }
+    return i === st ? NaN : Number(s.slice(st, i));
+  }
+  function term() {
+    let v = primary();
+    while (s[i] === "*" || s[i] === "/") {
+      const op = s[i++];
+      v = op === "*" ? v * primary() : v / primary();
+    }
+    return v;
+  }
+  function expr() {
+    let v = term();
+    while (s[i] === "+" || s[i] === "-") {
+      const op = s[i++];
+      v = op === "+" ? v + term() : v - term();
+    }
+    return v;
+  }
+  const v = expr();
+  return i === s.length ? v : NaN;    // trailing junk is a rejected entry
+}
+
 function wireBox(key, box) {
   const isMoney = MONEY_KEYS.includes(key);
   box.addEventListener("focus", e => { const t = e.target; setTimeout(() => t.select(), 0); });
+  box.addEventListener("input", () => updateEcho(key));
   box.addEventListener("change", e => {
     ratchetNote = "";
     const raw = String(e.target.value).replace(/[,\s$]/g, "");
     const blank = key === "rateMid2" ? -1 : 0;   // blank rateMid2 = coupled
-    const v = clampVal(key, raw === "" ? blank : Number(raw));
+    const v = clampVal(key, raw === "" ? blank
+                            : isMoney ? parseMoney(raw) : Number(raw));
     if (v === null) {
       e.target.value = isMoney ? fmtMoney(state[key]) : state[key];
+      updateEcho(key);          // the box was restored; keep the echo with it
       return;
     }
     state[key] = v;
+    if (key === "retAge" || key === "savePct") handSetDec = true;
     /* write the clamped value back into the box directly: the change event
        fires while the box is still focused, so refreshInputs' focus guard
        would skip it and leave a rejected raw value on screen. Stop fields
        show their "end" placeholder immediately when cleared to 0. */
     e.target.value = isMoney ? fmtMoney(v)
       : (key.endsWith("Stop") && v === 0 ? "" : v);
+    updateEcho(key);            // clamping can change the box; follow it
     render();
     pushHistory();
   });
@@ -1579,15 +1749,80 @@ function wireBox(key, box) {
 
 /* helpers to build a labeled field */
 const MONEY_KEYS = ["salary","startBal","penAmt","ssAmt","pen2Amt","ss2Amt","inc1Amt","inc2Amt","legacy"];
+/* the money keys that are amounts per year. Starting portfolio and legacy are
+   balances, and a balance has no monthly equivalent. */
+const MONTHLY_KEYS = ["salary","penAmt","ssAmt","pen2Amt","ss2Amt","inc1Amt","inc2Amt"];
+const ECHO_GAP = 8;      // clear space between the figure and the amount
+
+/* Monthly echo. A per-year income box carries the monthly equivalent of
+   whatever it holds, inside the box, to the left of the amount. Statements
+   quote benefits by the month, so this is where a figure entered in the wrong
+   unit shows itself, and it reads on a phone, where the numeric keypad has no
+   multiplication sign to type.
+
+   Display only, and deliberately one way. The yearly figure stays the single
+   stored value: this reads the box, writes one div and one padding, and touches
+   neither state nor render nor history, so no rounded monthly number can travel
+   back into the plan. A second editable box could not promise that, because two
+   thirds of whole-thousand yearly amounts do not divide by 12.
+
+   The amount always wins. The figure sits at the left of the interior and the
+   amount is right-aligned at the other end, so the two meet only if the amount
+   grows long enough to reach it. Before that happens the equals sign is dropped,
+   since the /mo is the part carrying the information, and then the figure. An
+   amount with its leading digit cut off is a wrong number on screen; the figure
+   is a convenience. Both are measured rather than estimated, the amount with a
+   ruler wearing the box's own font, because the width of a digit is not knowable
+   from here.
+
+   Every path that writes one of these boxes calls this: the keystroke handler,
+   both commit paths, refreshInputs, and the toggle on each Advanced section,
+   whose fields have no width while it is closed. */
+let echoProbe = null;
+function updateEcho(key) {
+  const echo = MONTHLY_KEYS.includes(key)
+    ? document.getElementById("e-" + key) : null;
+  if (!echo) return;
+  const box = document.getElementById("v-" + key);
+  if (!box) return;
+  const drop = () => { echo.textContent = ""; };
+  const v = parseMoney(box.value);
+  if (!Number.isFinite(v) || v <= 0) return drop();
+  if (!echoProbe) {
+    echoProbe = document.createElement("span");
+    echoProbe.className = "probe";
+    document.body.appendChild(echoProbe);
+  }
+  const cs = getComputedStyle(box);
+  echoProbe.style.fontFamily = cs.fontFamily;      // the shorthand is not
+  echoProbe.style.fontSize = cs.fontSize;          // reliable across browsers,
+  echoProbe.style.fontWeight = cs.fontWeight;      // so copy the longhands
+  echoProbe.style.fontStyle = cs.fontStyle;
+  echoProbe.style.letterSpacing = cs.letterSpacing;
+  echoProbe.style.fontVariantNumeric = cs.fontVariantNumeric;
+  echoProbe.textContent = box.value;
+  /* clientWidth is the width inside the border, so the interior the two share
+     is that less the 7px padding on each side. */
+  const room = box.clientWidth - 14 - echoProbe.offsetWidth - ECHO_GAP;
+  const mo = Math.round(v / 12).toLocaleString("en-US") + "/mo";
+  for (const text of [mo + " =", mo]) {
+    echo.textContent = text;
+    if (echo.offsetWidth <= room) return;
+  }
+  drop();
+}
 const fmtMoney = v => Number(v).toLocaleString("en-US");
 function moneyField(key, label, step, title) {
   /* text (not number) input: number inputs reject thousands separators.
      inputmode keeps the numeric keypad on mobile. */
   return '<div class="field"' + (title ? ' title="' + title + '"' : '') +
     '><label class="lbl">' + label + '</label>' +
-    '<div class="money"><span class="unit">$</span>' +
+    '<div class="money"><span class="unit">$</span><div class="frame">' +
     '<input type="text" inputmode="numeric" autocomplete="off" ' +
-    'class="numbox" id="v-' + key + '"></div></div>';
+    'class="numbox" id="v-' + key + '">' +
+    (MONTHLY_KEYS.includes(key)
+      ? '<div class="echo" aria-hidden="true" id="e-' + key + '"></div>' : '') +
+    '</div></div></div>';
 }
 function pctField(key, label, step) {
   return '<div class="field"><label class="lbl">' + label + '</label>' +
@@ -1652,19 +1887,18 @@ function animateSolve(key, target) {
 function buildInputs() {
   const host = document.getElementById("inputs");
   host.innerHTML =
-    '<div id="exampleNote">' +
-      '<b>Example numbers.</b> Replace with yours.</div>' +
     '<div class="grid-aal">' +
       numField("startAge", "Age now", 1, null,
-        "Your age today; the projection runs from here to the plan end age") +
-      numField("endAge", "Plan end age", 1) +
-      moneyField("salary", "Household income", 1000) +
+        "Your age today; the projection runs from here to the end age") +
+      numField("endAge", "End age", 1) +
+      moneyField("salary", "Household income", 1000,
+        "All wages for the year, minus Social Security and Medicare tax") +
     '</div>' +
     '<div class="note" id="note-ages" style="display:none; font-size:11px; color:var(--ink-soft); line-height:1.4;"></div>' +
     '<div class="grid2">' +
       moneyField("startBal", "Starting portfolio", 10000) +
-      moneyField("legacy", "Legacy at plan end", 5000,
-        "Portfolio value you want remaining at the plan end age; enter 0 to spend everything") +
+      moneyField("legacy", "Legacy", 5000,
+        "Portfolio value you want remaining at the end age; enter 0 to spend everything") +
     '</div>' +
     '<div class="sep" style="border-top:1px solid var(--grid); margin:12px 0 10px;"></div>' +
     '<div class="grid-inc">' +
@@ -1725,19 +1959,22 @@ function buildInputs() {
       '</div>' +
     '</div>' +
 
-    '<div class="sep" style="border-top:1px solid var(--grid); margin:12px 0 10px;"></div>' +
+    /* The goal both buttons serve is stated once, here, so each button face is
+       free to say what pressing it would write and what it would leave alone.
+       Reusing .head puts the rule this replaces back above the block. */
+    '<div class="head">Solve for level spending</div>' +
+    /* one grid, not one per row: separate grids sized to their own labels would
+       leave the two button faces out of line with each other */
     '<div class="dv-row">' +
       numField("retAge", "Retirement age", 1) +
       '<button class="solve solve-ret" id="setRStar" ' +
-        'title="Sets the retirement age at which spending comes closest to level through the plan end age, at the current savings rate">' +
-        '<span id="rLead">solve for level spending</span>' +
+        'title="Sets the retirement age at which spending comes closest to level through the end age, at the current savings rate">' +
+        '<span id="rLead">Retire at \u2013</span>' +
         '<span class="solve-val" id="rStar"></span></button>' +
-    '</div>' +
-    '<div class="dv-row">' +
       pctField("savePct", "Savings rate", 0.5) +
       '<button class="solve solve-save" id="setSStar" ' +
-        'title="Sets the savings rate so spending stays level through the plan end age, at the current retirement age">' +
-        '<span id="sLead">solve for level spending</span>' +
+        'title="Sets the savings rate so spending stays level through the end age, at the current retirement age">' +
+        '<span id="sLead">Save \u2013</span>' +
         '<span class="solve-val" id="sStar"></span></button>' +
     '</div>' +
     '<input type="range" id="v-savePct-slider" class="dv-slider save" min="0" ' +
@@ -1863,7 +2100,7 @@ function buildInputs() {
       '</div>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
         'When on, the growth rate changes linearly from the portfolio growth ' +
-        'rate above (at age now) to this ending rate (at the plan end age). ' +
+        'rate above (at age now) to this ending rate (at the end age). ' +
         'The rate is drawn as a dashed line on its own scale at the far right of ' +
         'the chart; drag the round handles on it to set the rates directly. ' +
         'Optionally, anchor a third rate at the retirement age for a two-segment ' +
@@ -1886,7 +2123,7 @@ function buildInputs() {
       '<label class="adv-check"><input type="checkbox" id="v-envOn"> ' +
         'Show spending at ±1% growth</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Draws dashed companion lines: the level spending this same plan ' +
+        'Draws dashed companion lines: the level spending this same scenario ' +
         'would support if the growth rate were one point lower or one point ' +
         'higher. Spending absorbs the difference; nothing else changes.</div>' +
       '</details>' +
@@ -1895,11 +2132,11 @@ function buildInputs() {
       '<label class="adv-check"><input type="checkbox" id="v-allowBorrow"> ' +
         'Allow borrowing at the growth rate</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Unchecked (the default), the plan never spends money it does not ' +
+        'Unchecked (the default), the scenario never spends money it does not ' +
         'have: spending stays as level as possible and steps up when later ' +
         'income arrives. Checked, spending is kept level even when that means ' +
         'implicitly borrowing against income that has not started yet (the ' +
-        'plan is then flagged as not feasible). Borrowing at the growth rate ' +
+        'scenario is then flagged as not feasible). Borrowing at the growth rate ' +
         'is only interesting from a mathematical perspective and is neither ' +
         'recommended nor realistic.</div>' +
       '</details>' +
@@ -1913,6 +2150,11 @@ function buildInputs() {
   // glideJump is a boolean gate, handled in sync below
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
+  /* A field inside a closed details has no width, so its figure cannot be
+     measured until the section opens. toggle does not bubble, so bind each. */
+  for (const d of host.querySelectorAll("details"))
+    d.addEventListener("toggle", () => MONTHLY_KEYS.forEach(updateEcho));
+
   const glideBox = host.querySelector("#v-glide");
   glideBox.addEventListener("change", e => { state.glide = e.target.checked; render(); pushHistory(); });
   const endSlider = host.querySelector("#v-rateEnd-slider");
@@ -1921,6 +2163,7 @@ function buildInputs() {
   const saveSlider = host.querySelector("#v-savePct-slider");
   saveSlider.addEventListener("input", e => {
     state.savePct = Number(e.target.value);
+    handSetDec = true;
     render();
   });
   saveSlider.addEventListener("change", () => pushHistory());
@@ -2002,8 +2245,14 @@ function buildInputs() {
 function refreshInputs(m) {
   const syncBox = (id, val) => {
     const el = document.getElementById(id);
-    if (el && document.activeElement !== el)
-      el.value = MONEY_KEYS.includes(id.slice(2)) ? fmtMoney(val) : val;
+    if (el && document.activeElement !== el) {
+      const key = id.slice(2);
+      el.value = MONEY_KEYS.includes(key) ? fmtMoney(val) : val;
+      /* the box just changed under an undo, a solve, a link load or an example
+         button, so its echo has to follow. The focus guard above covers the
+         other case: a box being typed in keeps the echo its keystrokes set. */
+      updateEcho(key);
+    }
   };
   syncBox("v-salary", state.salary);
   syncBox("v-startBal", state.startBal);
@@ -2089,15 +2338,10 @@ function refreshInputs(m) {
   if (cb5) cb5.checked = !!state.ss2Spousal;
 
   /* solve readouts */
-  const setBtn = document.getElementById("setSStar");
   if (m.nWork === 0) {
-    setSolve("sLead", "sStar", "solve for level spending",
-             "n/a (no working years)");
-    setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
+    setSolve("sLead", "sStar", "No working years", "nothing to save from", "off");
   } else if (m.nRet === 0) {
-    setSolve("sLead", "sStar", "solve for level spending",
-             "n/a (no retirement years)");
-    setBtn.disabled = true; setBtn.style.opacity = "0.5"; setBtn.style.cursor = "default";
+    setSolve("sLead", "sStar", "No retirement years", "nothing to level", "off");
   } else {
     /* s* is non-finite exactly when there is no household income to save
        from, since its denominator carries a factor of salary. Minus
@@ -2107,35 +2351,54 @@ function refreshInputs(m) {
        it) name no savings rate, and pressing the button there would write
        NaN into the savings rate, so it grays with the other n/a cases. */
     const degen = !Number.isFinite(m.sStar) && !(m.sStar <= 0);
-    setBtn.disabled = degen;
-    setBtn.style.opacity = degen ? "0.5" : "";
-    setBtn.style.cursor = degen ? "default" : "pointer";
     const sTarget = Math.min(100, Math.max(0, m.sStar * 100));
-    /* level state moves to the first line, freeing the second for the shock */
+    /* level is a settled state, not a press. It used to render at full
+       saturation with the shock on its second line, so the one button that
+       could do nothing looked exactly like the one that could. */
     const sLevel = !(m.sStar <= 0) && !degen
                    && Math.abs(state.savePct - sTarget) < 0.05;
+    /* the lead is what pressing would write, so it uses the CLAMPED rate: the
+       face must not promise a rate the clamp will not deliver. The sub-line
+       names the input the press leaves alone. */
     setSolve("sLead", "sStar",
-      sLevel ? "spending is level" : "solve for level spending",
-      sLevel ? crashSaveTxt()
+      sLevel ? "Spending is level"
+      : m.sStar <= 0 ? "Save nothing"
+      : degen ? "No savings rate works"
+      : "Save " + fmtPct(sTarget),
+      sLevel ? ""
       : m.sStar <= 0 ? "balance + income suffice"
-      : degen ? "n/a (no household income)"
-      : "setting savings: " + fmtPct(m.sStar * 100));
+      : degen ? "no income to save from"
+      : "while keeping retirement at " + state.retAge,
+      sLevel ? "settled" : degen ? "off" : "live");
   }
   /* already retired (retirement age at or before age now): both solve
      buttons and the salary row are inapplicable, so they gray in place;
      everything un-grays the moment the retire line moves past age now */
-  const rBtn = document.getElementById("setRStar");
-  let rTxt, rLead = "solve for level spending";
+  /* every branch sets all three: the lead, the sub-line, and which of the
+     three dresses the button wears */
+  let rTxt, rLead, rMode;
   if (m.nWork === 0) {
     lastRStar = null;
-    rTxt = "n/a (already retired)";
-    rBtn.disabled = true; rBtn.style.opacity = "0.5"; rBtn.style.cursor = "default";
+    rLead = "Already retired";
+    rTxt = "no working years left";
+    rMode = "off";
   } else {
-    rBtn.disabled = false; rBtn.style.opacity = ""; rBtn.style.cursor = "pointer";
     const Rs = solveRStar();
     lastRStar = Rs;
-    if (Rs === null) rTxt = "none by age " + (state.endAge - 1);
-    else if (clampVal("retAge", Rs) === state.retAge) {
+    /* clamped once and reused: clampVal can ratchet the end age and set the
+       ratchet note, and a readout should not do that twice */
+    const Rc = Rs === null ? null : clampVal("retAge", Rs);
+    if (Rs === null) {
+      rLead = "No age works";
+      /* solveRStar scans start age through end age minus one, so when it
+         finds nothing, nothing UP TO that age works, including it */
+      rTxt = "none up to " + (state.endAge - 1);
+      /* dimmed rather than settled: this is the twin of "No savings rate
+         works", which already dims, and pressing it was caught by a bare
+         return — a full-colour button that silently did nothing */
+      rMode = "off";
+    }
+    else if (Rc === state.retAge) {
       /* pressing would not move the retirement age. If spending is truly
          level at this age (for example after the savings-rate solve trues
          it up), say so plainly; otherwise the integer age is only the
@@ -2143,14 +2406,19 @@ function refreshInputs(m) {
          0.1% of working spending, whichever is larger. */
       const lvlEps = Math.max(100, 0.001 * Math.abs(m.workSpend));
       rLead = Math.abs(levelGapAt(state.retAge)) <= lvlEps
-        ? "spending is level" : "spending is roughly level";
-      rTxt = crashRetTxt();
+        ? "Spending is level" : "Spending is roughly level";
+      rTxt = "";
+      rMode = "settled";
     }
     else {
-      rTxt = "setting retirement: " + Rs;
+      rLead = "Retire at " + Rc;          // the clamped age is what gets written
+      /* subordinate to the lead, not a detached fact under it: the press moves
+         one input and holds the other, and one sentence says both */
+      rTxt = "while keeping savings at " + fmtPct(state.savePct);
+      rMode = "live";
     }
   }
-  setSolve("rLead", "rStar", rLead, rTxt);
+  setSolve("rLead", "rStar", rLead, rTxt, rMode);
   const salBox = document.getElementById("v-salary");
   if (salBox) {
     salBox.disabled = m.nWork === 0;
@@ -2177,33 +2445,62 @@ function renderStats(m) {
     /* No working years, so the tool answers a different question: not "how
        much should I save" but "how much can I take, and how safe is it".
 
-       The shock belongs to spending, not to the withdrawal it used to sit
-       beside, so it takes the pair — the same grammar the working row uses,
-       where two states of one quantity face each other across a glyph. An
-       arrow rather than a relation, because this is not a comparison to be
-       resolved but one figure becoming another under a loss, and in ink-soft
-       rather than red: a downside scenario is not a plan that has failed.
-       Pairing also gives "20% less" the referent it lacked at the end of the
-       row, and restores the equal weight a comparison needs.
+       The working row puts two figures either side of a relation and asks
+       whether they match. This one puts a figure beside its own composition:
+       spending is what the portfolio pays plus what arrives on its own. It is
+       an identity, not a verdict — wd = spend - inc holds exactly in the
+       model, so the row cannot disagree with the bands in the chart.
+
+       That answers the question the row used to leave hanging. A first-year
+       withdrawal of 8% reads alarmingly beside a 4% rule, and the row gave no
+       reason for it; the reason is that nothing else has started yet, and it
+       is now on the same line.
+
+       The row states the mix NOW and stops there. A companion figure for the
+       year every stream is paying was tried and cut: with two pensions, two
+       Social Security claims and two other streams there can be half a dozen
+       transitions, and naming one of them means silently skipping the rest
+       with no way for the reader to know which was picked or why. Worse, the
+       streams have stop ages, so the year income peaks is not a plateau — a
+       figure labelled "from age 70" can describe a state that ends at 80 when
+       a pension stops and the draw climbs back. The chart already draws every
+       one of those steps, in order and to scale. One sampled point cannot
+       improve on it and can contradict it.
+
+       With no guaranteed income anywhere the equation is vacuous (X = X + 0),
+       so the pair collapses to spending alone and the rate returns to the
+       supporting group. Less to say, and the row says less.
 
        Portfolio at R is the starting portfolio echoed back, so it appears
-       only as the withdrawal rate's denominator, and Savings and Working
-       spending do not apply. */
-    const cp = crashStatParts(m);
+       only as the rate's denominator, and Savings and Working spending do
+       not apply. */
+    const ret = m.rows.filter(x => x.phase === "retired" && !x.terminal);
+    const r0 = ret[0];
+    /* any guaranteed income anywhere in the scenario is enough to make the
+       equation worth stating, even when this year's share of it is zero */
+    const anyInc = ret.some(x => x.inc > 1e-6);
+    const split = !!r0 && anyInc;
+    const incStart = split ? ret.find(x => x.inc > 1e-6) : null;
     document.getElementById("stats").innerHTML =
       '<div class="lvl-pair">' + retStat +
-        (cp ? as("lvl-rel", stat("\u00a0", "\u2192", "var(--ink-soft)", "")) +
-              stat(cp.lbl, cp.val, "var(--ink)", cp.sub) : "") +
+        (split
+          ? as("lvl-rel", stat("\u00a0", "=", "var(--ink-soft)", "")) +
+            stat(r0.wd < 0 ? "To portfolio" : "From portfolio",
+                 fmt$(r0.wd), "var(--port-text)", drawRate(r0.wd)) +
+            as("lvl-rel", stat("\u00a0", "+", "var(--ink-soft)", "")) +
+            stat("Guaranteed income", fmt$(r0.inc), "var(--decum)",
+                 r0.inc > 1e-6 ? perMo(r0.inc)
+                 : incStart ? "starts at " + incStart.age : "")
+          : "") +
       '</div>' +
-      '<div class="lvl-rest">' + wdStat() + '</div>';
+      '<div class="lvl-rest">' + (split ? "" : wdStat()) + '</div>';
   } else if (m.nRet === 0) {
     /* nothing to compare working spending against; the flat row stands */
     document.getElementById("stats").innerHTML =
-      stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
-           fmt$(saveYr / 12) + "/mo") +
+      stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)", perMo(saveYr)) +
       stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
       stat("Working spending", fmt$(m.workSpend), "var(--accum)",
-           "income − savings") +
+           perMo(m.workSpend)) +
       retStat;
   } else {
     /* The pair, then the rest. Level is the same test the retirement-age solve
@@ -2228,18 +2525,24 @@ function renderStats(m) {
     document.getElementById("stats").innerHTML =
       '<div class="lvl-pair">' +
         stat("Working spending", fmt$(m.workSpend), "var(--accum)",
-             "income \u2212 savings") +
+             perMo(m.workSpend)) +
         as("lvl-rel", stat("\u00a0", rel,
              mode === "off" ? "var(--bad)" : "var(--good)", "")) +
         retStat +
       '</div>' +
       '<div class="lvl-rest">' +
-        stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)",
-             fmt$(saveYr / 12) + "/mo") +
+        stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)", perMo(saveYr)) +
         stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
       '</div>';
   }
-  /* sub-line for the Retirement spending stat. The big number stays the
+  /* Sub-line for the Retirement spending stat. It opens with the monthly
+     equivalent of the headline, the same way the Savings stat does, because a
+     yearly spending figure is compared against a monthly budget. Where the plan
+     varies, the phrase that says how follows it: that half is data the headline
+     does not carry, so it is kept rather than replaced. Working spending's
+     sub-line was an explanation of its own arithmetic and could go.
+
+     The big number stays the
      first year of the drawn plan (both solves aim at it); when the drawn
      rows vary, the sub carries where spending goes. Pure slider tilt is
      monotonic, so its far end is named directly; a drawn curve can put the
@@ -2255,7 +2558,9 @@ function renderStats(m) {
       if (r.spend > hi) hi = r.spend;
       last = r.spend;
     }
-    if (!(hi - lo > 0.5)) return "";           // level as drawn
+    const mo = perMo(m.S);
+    if (!(hi - lo > 0.5)) return mo;           // level as drawn
+    const lead = mo === "" ? "" : mo + " ";    // non-finite spending: no monthly
     const stepped = !state.allowBorrow && m.steps && m.steps.length > 1;
     let drawnT = false;
     if (state.tiltOn)
@@ -2263,13 +2568,13 @@ function renderStats(m) {
         if (tiltCurve[m.R + 1 + j] !== undefined) { drawnT = true; break; }
     const range = fmt$(lo) + " to " + fmt$(hi);
     if (stepped)
-      return stepPhrase(m.steps) + (drawnT || state.tiltPct !== 0
-        ? " · " + range : " to " + fmt$(hi));
-    if (drawnT) return "first year · varies, " + range;
+      return lead + (mo === "" ? "" : "· ") + stepPhrase(m.steps) +
+        (drawnT || state.tiltPct !== 0 ? " · " + range : " to " + fmt$(hi));
+    if (drawnT) return lead + "first year · varies, " + range;
     if (state.tiltPct !== 0)
-      return "first year · " + (state.tiltPct > 0 ? "+" : "") +
+      return lead + "first year · " + (state.tiltPct > 0 ? "+" : "") +
         state.tiltPct + "%/yr to " + fmt$(last);
-    return "varies, " + range;                 // safety net: unnamed variation
+    return lead + (mo === "" ? "" : "· ") + "varies, " + range;
   }
   /* "steps up at 71" for one or two, "steps up each year from 87 to 95" for
      a run, and the two mixed where a plan has both */
@@ -2283,13 +2588,24 @@ function renderStats(m) {
   }
   /* First year off the portfolio, for the already-retired row. The RATE is the
      value, not the dollars: it is the figure a reader computes in their head
-     anyway and the one that makes this plan comparable to a 4% rule or a VPW
-     table — and before any guaranteed income starts the dollar amount IS the
+     anyway, and before any guaranteed income starts the dollar amount IS the
      whole of spending, so leading with it would print the headline number
      twice. The balance it is a share of rides along in the sub, which saves
      echoing the starting portfolio as a stat of its own. A negative
      withdrawal is a surplus going back in, which the tooltip already names
-     that way. */
+     that way.
+
+     It is division, and that is the whole of its claim: this year's draw over
+     the balance it comes from. An earlier version of this comment justified
+     the rate as making the scenario "comparable to a 4% rule or a VPW table",
+     which is exactly the reasoning that turns a calculator into a planner —
+     the tool has no view on which rates are safe and states none here. */
+  /* the draw as a share of the balance it comes from */
+  function drawRate(wd) {
+    return state.startBal > 0
+      ? fmtPct(Math.abs(wd) / state.startBal * 100) + " of " + fmtAxis(state.startBal)
+      : "";
+  }
   function wdStat() {
     const r = m.rows.find(x => x.phase === "retired" && !x.terminal);
     if (!r || !Number.isFinite(r.wd)) return "";
@@ -2370,13 +2686,13 @@ function renderPlanTable(m) {
                 "Guaranteed income", "Portfolio withdrawal"];
   const body = v.rows.map(r =>
     "<tr><td>" + r.age + "</td><td>" +
-    (r.terminal ? "plan end" : r.phase === "retired" ? "retired" : "working") + "</td><td>" +
+    (r.terminal ? "scenario end" : r.phase === "retired" ? "retired" : "working") + "</td><td>" +
     fmt$(r.balance) + "</td><td>" +
     fmt$(r.spend) + "</td><td>" +
     fmt$(r.inc || 0) + "</td><td>" +
     fmt$(r.terminal ? 0 : r.wd) + "</td></tr>").join("");
   t.innerHTML =
-    "<caption>Plan year by year, " + unit + " and before tax. A negative " +
+    "<caption>Scenario year by year, " + unit + " and before tax. A negative " +
     "withdrawal is money going into the portfolio: a contribution during the " +
     "working years, a reinvested surplus during retirement.</caption>" +
     "<thead><tr>" + head.map(h => "<th scope=\"col\">" + h + "</th>").join("") +
@@ -2387,7 +2703,7 @@ function renderPlanTable(m) {
      at the four series and does not promise the rate path or the plus-or-minus
      one point companions that the chart may also be drawing */
   if (svg) svg.setAttribute("aria-label",
-    "Plan chart, ages " + m.A0 + " to " + m.E + ", retirement at " + m.R +
+    "Scenario chart, ages " + m.A0 + " to " + m.E + ", retirement at " + m.R +
     ". The balance, spending, guaranteed income and portfolio withdrawal for " +
     "each year follow as a table.");
 }
@@ -2889,12 +3205,14 @@ function attachRateDrag() {
         if (a !== null) {
           a = Math.min(Math.max(a, state.startAge + 1), state.endAge - 1);
           state.retAge = a;
+          handSetDec = true;
         }
       }
     } else if (dragMode === "ret") {
       const v = clampVal("retAge", ageAtX(e, rect));
       if (v === null || v === state.retAge) return;
       state.retAge = v;
+      handSetDec = true;
     } else if (dragMode === "bal") {
       const y = e.clientY - rect.top;
       let v = (geom.plotB - y) / geom.plotH * dragMeta.balMax;
@@ -2971,7 +3289,7 @@ function attachTooltip() {
        the lines, the axis titles, and the summary stats. Phase is already
        named in words on the header line. */
     const spendColor = retired ? "var(--decum)" : "var(--accum)";
-    const phaseTxt = d.terminal ? "plan end" : retired ? "retired" : "working";
+    const phaseTxt = d.terminal ? "scenario end" : retired ? "retired" : "working";
 
     const cross = svg.querySelector("#cross");
     cross.setAttribute("visibility", "visible");
@@ -3129,7 +3447,7 @@ function render() {
     warn.innerHTML = "<b>Legacy is out of reach.</b> Leaving " +
       fmt$(state.legacy) + " at age " + state.endAge + " takes more than the " +
       "portfolio, savings, and future income provide, so retirement spending " +
-      "comes out below zero: the plan would have you paying into the " +
+      "comes out below zero: the scenario would have you paying into the " +
       "portfolio rather than spending from it. Lower the legacy at the end " +
       "age, or check the amount entered.";
   } else if (!m.feasible) {
@@ -3139,7 +3457,7 @@ function render() {
     warn.style.display = "block";
     if (!Number.isFinite(m.minBal) || !Number.isFinite(m.negFrom)) {
       warn.innerHTML = "<b>Not feasible.</b> Please check that the ages are in " +
-        "order (age now, then retirement, then plan end age) and that the inputs " +
+        "order (age now, then retirement, then end age) and that the inputs " +
         "are valid numbers.";
     } else {
       const bridge = minFeasibleStartBal();
@@ -3155,7 +3473,7 @@ function render() {
     warn.style.display = "block";
     const bridge = minFeasibleStartBal();
     warn.innerHTML = "<b>Spending steps up.</b> Level spending after retirement would require " +
-      "borrowing, so the plan holds spending as level as possible instead: " +
+      "borrowing, so the scenario holds spending as level as possible instead: " +
       stepRuns(m.steps).map(g => g.run
         ? "then rising each year until age " + g.steps[g.steps.length - 1].to
         : "$" + Math.round(g.steps[0].c).toLocaleString("en-US") +
@@ -3164,7 +3482,7 @@ function render() {
         ? " Adding roughly $" + bridge.toLocaleString("en-US") +
           " to the portfolio today would make fully level spending feasible."
         : "") +
-      " (To see the level plan with borrowing, check " +
+      " (To see the level scenario with borrowing, check " +
       "\u201cAllow borrowing\u201d under Advanced.)";
   } else {
     warn.style.display = "none";
@@ -3237,25 +3555,34 @@ const RETIRED = Object.assign(JSON.parse(JSON.stringify(state)), {
   startAge: 62, retAge: 62, salary: 0, savePct: 0, startBal: 1000000,
   penAmt: 10000, penAge: 65, ssAmt: 30000, ssAge: 70,
 });
-/* Example marker: the muted "Example numbers" line above the inputs shows
+/* Example marker: the muted "Example scenario" chip in the masthead shows
    only while the state is exactly one of the two examples. A scenario link
    is someone's real numbers, so a hash present at load suppresses the marker
    even if those numbers happen to equal an example; the "working example"
    and "retired example" buttons restore eligibility along with the example
    itself. */
 const DEFAULTS_JSON = JSON.stringify(DEFAULTS);
-/* the banner tolerates differences in the two Decision variables: solve
-   presses, the retire-line drag, and hand-set retAge/savePct leave every
-   other number an example number, so the label stays true and stays up */
+/* The banner tolerates differences in the two Decision variables, but only
+   when the tool set them. A solve press is the tool computing an answer from
+   the example's numbers, so the numbers on screen are still ours and the label
+   is still true — and dismissing it there would be worst of all, since the
+   first-run cue invites that press before anyone has typed anything.
+
+   Setting them BY HAND is the opposite: typing a retirement age, dragging the
+   retire line, or moving the savings slider is the user beginning to replace
+   the example, and the label should go. Earlier this tolerance covered both,
+   so changing the retirement age left the banner up. */
 const DEC_KEYS = ["retAge", "savePct"];
 const EXAMPLES = [DEFAULTS, RETIRED];
+let handSetDec = false;
 function exampleLike() {
   const a = Object.assign({}, state);
-  for (const k of DEC_KEYS) delete a[k];
+  const tol = handSetDec ? [] : DEC_KEYS;
+  for (const k of tol) delete a[k];
   const aj = JSON.stringify(a);
   return EXAMPLES.some(ex => {
     const b = Object.assign({}, ex);
-    for (const k of DEC_KEYS) delete b[k];
+    for (const k of tol) delete b[k];
     return JSON.stringify(b) === aj;
   });
 }
@@ -3509,7 +3836,7 @@ function hasGaps(map) {
     }
     const msg = [r.applied + (r.applied === 1 ? " year" : " years") +
                  " applied from age " + r.from];
-    if (r.dropped) msg.push(r.dropped + " outside the plan's years dropped");
+    if (r.dropped) msg.push(r.dropped + " outside the scenario's years dropped");
     if (p.clamped) msg.push(p.clamped + " clamped to " + GRID.rate.lo +
                             "% to " + GRID.rate.hi + "%");
     if (p.snapped) msg.push(p.snapped + " rounded to a tenth");
@@ -3719,11 +4046,12 @@ if (exampleEligible && JSON.stringify(state) === DEFAULTS_JSON) {
   }
 }
 /* No confirmation flash here: pressing these repaints the whole form and
-   chart, and the "Example numbers" marker appears, so the screen itself is
+   chart, and the "Example scenario" marker appears, so the screen itself is
    the feedback. The copy-link button keeps its "copied!" because a
    clipboard write is the one action with nothing else to show. */
 function applyPreset(obj) {
   ratchetNote = "";
+  handSetDec = false;
   Object.assign(state, JSON.parse(JSON.stringify(obj)));
   try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   buildInputs();          // rebuild so drawers re-collapse appropriately
@@ -3761,6 +4089,15 @@ document.getElementById("clearBtn").addEventListener("click", e => {
 /* the plan table is kept current by render(); rebuilt here anyway so the
    printed copy cannot lag the rest of the report if anything ever changes
    the order those two run in */
+/* The footer carries the only build string in the body, and the report reads it
+   rather than repeating it. It used to be written in both places and drifted:
+   the page said 2026.07.30l for three builds while the report said the truth.
+   The literal stays in the markup so it survives with JS off; the comment at
+   the top of the file is for source readers and is updated by hand. */
+function buildStamp() {
+  const el = document.getElementById("buildStamp");
+  return el ? el.textContent : "";
+}
 function planTableHTML() {
   const t = document.getElementById("planTable");
   return t ? t.innerHTML : "";
@@ -3780,12 +4117,12 @@ function buildReport() {
     (a2 > 0 ? " to " + a2 : "");
   const colaNote = on => on ? "" : ", not inflation-adjusted";
   add("Age now", state.startAge);
-  add("Plan end age", state.endAge);
+  add("End age", state.endAge);
   add("Retirement age", state.retAge);
   add("Household income", fmt$(state.salary), inert);
   add("Savings rate", state.savePct + "%", inert);
   add("Starting portfolio", fmt$(state.startBal));
-  add("Legacy at plan end", fmt$(state.legacy));
+  add("Legacy", fmt$(state.legacy));
   if (state.ssAmt > 0) {
     const scR = ssScale(Math.round(state.retAge));
     add("Social Security", span(state.ssAmt, state.ssAge, state.ssStop),
@@ -3832,6 +4169,12 @@ function buildReport() {
     const s = document.getElementById(id);
     return s && s.textContent ? s.textContent : "\u2013";
   };
+  /* a settled button carries no sub-line, so the separator would otherwise
+     print as a trailing dot */
+  const solveReadout = (leadId, valId) => {
+    const lead = readout(leadId), val = readout(valId);
+    return val === "\u2013" ? lead : lead + " \u00b7 " + val;
+  };
   const vb = (id, fallback) => {
     const s = document.getElementById(id);
     return s ? '<svg viewBox="' + (s.getAttribute("viewBox") || fallback) +
@@ -3873,20 +4216,22 @@ function buildReport() {
   host.innerHTML =
     '<div class="rep-head">LevelSpend' +
     '<span class="rep-tag">a level-spending retirement solver</span></div>' +
-    '<div class="rep-sub">Plan report \u00b7 ' + dateStr + "</div>" +
+    '<div class="rep-sub">Scenario report \u00b7 ' + dateStr + "</div>" +
     '<div class="rep-unit">' + unitLine + "</div>" +
     '<div class="rep-h2">Inputs</div>' +
     '<table class="rep-table">' + rowsH.join("") + "</table>" +
     '<div class="rep-h2">Results</div>' +
     '<div class="stats">' + document.getElementById("stats").innerHTML + "</div>" +
     '<table class="rep-table">' +
-    "<tr><td>Savings rate for level spending</td><td>" + readout("sStar") + "</td></tr>" +
-    "<tr><td>Retirement age for level spending</td><td>" + readout("rStar") + "</td></tr>" +
+    "<tr><td>Savings rate for level spending</td><td>" +
+      solveReadout("sLead", "sStar") + "</td></tr>" +
+    "<tr><td>Retirement age for level spending</td><td>" +
+      solveReadout("rLead", "rStar") + "</td></tr>" +
     "</table>" +
     '<a class="rep-link" href="' + scenarioLink() +
     '">Open this scenario in LevelSpend</a>' +
     '<div class="rep-page2">' +
-    '<div class="rep-h2">Plan chart</div>' +
+    '<div class="rep-h2">Scenario chart</div>' +
     '<div class="rep-chart">' + reportChartSVG() + "</div>" +
     (state.curveOn ? '<div class="rep-stripblk"><div class="rep-h3">Growth rate curve</div>' +
       '<div class="rep-strip">' + vb("curveStrip", "0 0 800 200") + "</div></div>" : "") +
@@ -3902,7 +4247,7 @@ function buildReport() {
       '<div class="rep-h2">Year by year</div>' +
       '<table class="rep-years">' + planTableHTML() + "</table></div>" : "") +
     '<div class="rep-foot">printed ' + dateStr +
-    " \u00b7 LevelSpend build 2026.07.29h \u00b7 levelspend.github.io</div>";
+    " \u00b7 LevelSpend " + buildStamp() + " \u00b7 levelspend.github.io</div>";
 }
 window.addEventListener("beforeprint", buildReport);
 {
