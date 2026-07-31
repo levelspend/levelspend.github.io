@@ -3270,19 +3270,35 @@ function attachRateDrag() {
   });
 }
 
+/* Set by attachTooltip; called by render so an open detail box follows the
+   scenario instead of stranding old numbers on screen. No-op until the
+   tooltip is attached. */
+let redrawTip = () => {};
+
 function attachTooltip() {
   const svg = document.getElementById("chart");
   const tip = document.getElementById("tip");
   const box = document.getElementById("chartBox");
+
+  /* Two functions, not one: showAt draws the box for a given age, showTip
+     derives that age from a pointer event. Separating the age is what lets
+     render redraw an open box against fresh rows. pinnedAge is non-null
+     exactly while the box is showing, since hide clears it. */
+  let pinnedAge = null;
 
   const showTip = e => {
     if (!geom || !lastRows) return;
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     if (mx < geom.mL || mx > geom.W - geom.mR) { hide(); return; }
-    const age = Math.round(geom.x0 + (mx - geom.mL) / (geom.W - geom.mL - geom.mR) * (geom.x1 - geom.x0));
+    showAt(Math.round(geom.x0 + (mx - geom.mL) / (geom.W - geom.mL - geom.mR) * (geom.x1 - geom.x0)));
+  };
+
+  const showAt = age => {
+    if (!geom || !lastRows) return;
     const d = lastRows.find(r => r.age === age);
     if (!d) { hide(); return; }
+    pinnedAge = age;
     const retired = d.phase === "retired";
     /* the box carries series identity, not phase: gold is the portfolio on
        the left axis, green then blue is spending on the right axis, matching
@@ -3351,8 +3367,17 @@ function attachTooltip() {
   svg.addEventListener("pointermove", showTip);
   svg.addEventListener("pointerdown", showTip);
   svg.addEventListener("pointerleave", e => { if (e.pointerType !== "touch") hide(); });
+  /* On touch the box is deliberately sticky: pointerleave does not hide it,
+     so a finger can lift and the detail stays readable. That makes the box
+     outlive input changes, and renderChart rebuilds the SVG, so without this
+     the user is left with a stale box and no crosshair (the cross group is
+     recreated hidden). Redrawing at the same age keeps the box live: set
+     Social Security to 0 and the open box shows the new figures. If the age
+     has left the span, showAt hides instead. */
+  redrawTip = () => { if (pinnedAge !== null) showAt(pinnedAge); };
   function hide() {
     tip.style.display = "none";
+    pinnedAge = null;
     const c = svg.querySelector("#cross");
     if (c) c.setAttribute("visibility", "hidden");
   }
@@ -3370,6 +3395,9 @@ function render() {
       state.inflPct + "%/yr. Inputs and stats are today's dollars.";
   }
   renderChart(m);
+  /* after renderChart, so geom, lastRows and the fresh cross group are in
+     place for an open box to redraw against */
+  redrawTip();
   renderPlanTable(m);
 
   const agesNote = document.getElementById("note-ages");
