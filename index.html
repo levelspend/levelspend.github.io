@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.08.01a -->
+<!-- LevelSpend build 2026.08.01b -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -807,7 +807,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.08.01a</span>
+  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.08.01b</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -830,7 +830,7 @@
    node. Keep it that way; the UI starts after the end marker. */
 const state = {
   startBal: 50000, salary: 75000, savePct: 15, ratePct: 4,
-  startAge: 35, retAge: 57, endAge: 95,
+  startAge: 35, retAge: 57, endAge: 100,
   penAmt: 12000, penAge: 65, penStop: 0, ssAmt: 24000, ssAge: 70, ssStop: 0,
   pen2Amt: 0, pen2Age: 65, pen2Stop: 0, ss2Amt: 0, ss2Age: 67, ss2Stop: 0,
   inc1Amt: 0, inc1Age: 67, inc1Stop: 0, inc2Amt: 0, inc2Age: 67, inc2Stop: 0,
@@ -1890,7 +1890,8 @@ function buildInputs() {
     '<div class="grid-aal">' +
       numField("startAge", "Age now", 1, null,
         "Your age today; the projection runs from here to the end age") +
-      numField("endAge", "End age", 1) +
+      numField("endAge", "End age", 1, null,
+        "The last funded year ends at this age and any legacy lands here; pick an age you are unlikely to outlive") +
       moneyField("salary", "Household income ($/yr)", 1000,
         "All wages for the year, minus Social Security and Medicare tax") +
     '</div>' +
