@@ -1,7 +1,7 @@
 # LevelSpend: a level-spending retirement solver
 
 A single-file retirement planner based on amortization: it computes the level
-real (inflation-adjusted) consumption that your portfolio, savings, pension,
+real (inflation-adjusted) spending that your portfolio, savings, pension,
 and Social Security can sustain from now through a chosen end age, with the portfolio depleting to a chosen legacy amount (zero by default) exactly at that age.
 
 It answers two questions directly:
@@ -39,7 +39,7 @@ These omissions are intentional. The tool answers one question and answers it tr
 
 ## Method
 
-Retirement consumption is the annuity payment that amortizes the
+Retirement spending is the annuity payment that amortizes the
 retirement-date portfolio, plus the present value of future pension and
 Social Security, minus the present value of any legacy, over the remaining
 horizon.
@@ -59,9 +59,6 @@ retirement age is a whole number, so its solve returns the year closest to
 level and a step usually remains. On the working example it returns 62, where
 retirement spending falls about $1,400 short of working spending; the level
 point itself falls at age 62.6.
-
-Cash flows use an annual, end-of-year convention. The equations are
-documented in a comment inside the file.
 
 ## Feedback / Contact
 
