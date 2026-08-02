@@ -60,6 +60,10 @@ level and a step usually remains. On the working example it returns 62, where
 retirement spending falls about $1,400 short of working spending; the level
 point itself falls at age 62.6.
 
+## Tests
+
+The model has a test suite: run node test/model.test.mjs with Node.js. It needs Node and nothing else to install. On each run the suite slices the model region out of index.html and imports it, so the code under test is the file itself, and it checks 80 assertions against it, from the Social Security claiming factor table to the terminal balance landing on the legacy amount.
+
 ## Feedback / Contact
 
 Active in the [Bogleheads discussion thread](https://www.bogleheads.org/forum/viewtopic.php?t=473403), which is usually the fastest way to reach me.
