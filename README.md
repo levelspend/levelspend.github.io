@@ -35,7 +35,9 @@ benefit estimates) and read off the recalculated plan.
   by default, or a path you draw or type year by year under Advanced. No one
   knows the return in advance; try several and see how much the results move.
 
-These omissions are intentional. The tool answers one question and answers it transparently: given an assumed return, what level of real spending is consistent with your resources? The whole model is about 250 lines of readable JavaScript inside the file, 400 with its comments, marked off by a comment that begins `---- model ----`.
+These omissions are intentional. The tool answers one question and answers it transparently: given an assumed return, what level of real spending is consistent with your resources? The whole model is about 480 lines of readable JavaScript inside the file,
+just under 800 with its comments, marked off by a comment that begins
+`---- model ----`.
 
 ## Method
 
@@ -62,7 +64,12 @@ point itself falls at age 62.6.
 
 ## Tests
 
-The model has a test suite: run node test/model.test.mjs with Node.js. It needs Node and nothing else to install. On each run the suite slices the model region out of index.html and imports it, so the code under test is the file itself, and it checks 80 assertions against it, from the Social Security claiming factor table to the terminal balance landing on the legacy amount.
+The model has a test suite: run `node test/model.test.mjs` with
+[Node.js](https://nodejs.org). It needs Node and nothing else to install. On
+each run the suite slices the model region out of `index.html` and imports
+it, so the code under test is the file itself, and it checks 80 assertions
+against it, from the Social Security claiming factor table to the terminal
+balance landing on the legacy amount.
 
 ## Feedback / Contact
 
