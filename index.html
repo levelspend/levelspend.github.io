@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.08.01b -->
+<!-- LevelSpend build 2026.08.03f -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -807,7 +807,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.08.01b</span>
+  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.08.03f</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -842,6 +842,7 @@ const state = {
   glide: false, rateEnd: 4, glideKink: false, rateMid: 4,
   glideJump: false, rateMid2: -1, allowBorrow: false,
   envOn: false, futureOn: false,
+  salGrowPct: 0, salGrowSave: false,
 };
 
 const fvFactor = (r, n) => r === 0 ? n : (Math.pow(1 + r, n) - 1) / r;
@@ -1125,7 +1126,33 @@ function planAt(R0, s) {
   const m  = Math.max(0, Math.round(E - R));   // retirement payments: one at the
                                                // start of each year, R..E-1
   const contribution = state.salary * s;
-  const workSpend = state.salary * (1 - s);
+  /* ---- household income growth ----
+     A real (after-inflation) rate applied to household income each working
+     year: income in 0-based working year k is salary*(1+gq)^k. Two modes,
+     chosen by salGrowSave. Unchecked (spend mode), the savings RATE stays
+     the share the user set, spending moves with income, and "level"
+     compares retirement spending against the FINAL working year, the
+     standard actually reached at retirement. Checked (bank mode), SPENDING
+     holds at this year's level, income changes land on the contribution
+     line, and "level" compares against this year. Either way the level
+     target is salEnd*(1-s), which keeps the s* solve one division; at
+     gq = 0 the modes coincide and both are the shipped behavior, bit for
+     bit. workSpend stays the single number the gap, stats, and solvers
+     read: the year it names differs by mode, nothing else does. */
+  const gq = (state.salGrowPct || 0) / 100;
+  const bankRaises = !!state.salGrowSave;
+  const salAt = k => state.salary * Math.pow(1 + gq, k);
+  const Rw0 = Math.floor(R);                   // whole working years end here
+  const salEnd = bankRaises ? state.salary
+                            : salAt(Math.max(0, Rw0 - A0 - 1));
+  const workSpend = salEnd * (1 - s);
+  /* the gq === 0 branches reuse the shipped expressions verbatim, so a zero
+     rate is bit-identical to the shipped build in BOTH modes: the algebra
+     coincides but the floating point of a*(1-s) - a and -a*s does not */
+  const contribAt = k => gq === 0 ? contribution
+    : bankRaises ? salAt(k) - workSpend : salAt(k) * s;
+  const spendAt = k => gq === 0 ? state.salary * (1 - s)
+    : bankRaises ? workSpend : salAt(k) * (1 - s);
   const infl = state.inflPct / 100;
   const g = state.tiltPct / 100;
   /* ---- spending tilt curve (engine) ----
@@ -1206,7 +1233,7 @@ function planAt(R0, s) {
   let bal = state.startBal;
   for (let age = A0 + 1; age <= Rw; age++) {
     const rk = growth[idx(age)] / growth[idx(age) - 1] - 1;   // this year's rate
-    bal = (bal + contribution) * (1 + rk);
+    bal = (bal + contribAt(age - A0 - 1)) * (1 + rk);
     workBal.push(bal);
   }
   const growthR = R > Rw ? growthAtFrac(growth, idx(R)) : growth[idx(R)];
@@ -1215,10 +1242,18 @@ function planAt(R0, s) {
   /* the same retirement-date balance, split into its two closed-form parts,
      so s* can be inverted without re-running the accumulation:
        atRet = B0grow + salary * s * fvContrib */
-  let fvContrib = 0;
-  for (let age = A0 + 1; age <= Rw; age++)
-    fvContrib += growthR / growth[idx(age - 1)];
-  const B0grow = state.startBal * growthR;
+  /* atRet = B0grow + salary*s*fvContrib must hold in both modes so s*
+     stays one division. Spend mode: contribution salary*(1+gq)^k*s puts
+     the growth weight inside fvContrib. Bank mode: contribution
+     salary*((1+gq)^k - (1-s)) splits into an s-independent stream, folded
+     into B0grow, plus salary*s per year, so fvContrib is unweighted. */
+  let fvContrib = 0, fvExtra = 0;
+  for (let age = A0 + 1; age <= Rw; age++) {
+    const w = growthR / growth[idx(age - 1)], gk = Math.pow(1 + gq, age - A0 - 1);
+    if (bankRaises) { fvContrib += w; fvExtra += state.salary * (gk - 1) * w; }
+    else fvContrib += gk * w;
+  }
+  const B0grow = state.startBal * growthR + fvExtra;
 
   /* Level (tilted) retirement spending, solved by PV balance:
      C * PV(unit tilted spending stream) = atRet + pvInc - PV(legacy).
@@ -1285,7 +1320,7 @@ function planAt(R0, s) {
 
   return { A0, E, R, m, growth, disc, idx, discAt, partsAt, shapeW,
            pvInc, pvLegacy, discR, unitPV, atRet, B0grow, fvContrib,
-           C, steps, segC, S, workSpend, contribution, workBal };
+           C, steps, segC, S, workSpend, contribution, workBal, salEnd, salAt, spendAt, contribAt };
 }
 
 /* Runs of consecutive one-year segments, for readouts that would otherwise
@@ -1333,7 +1368,11 @@ function growthAtFrac(growth, t) {
 function solveSStar(p) {
   const k1 = (p.B0grow * p.discR + p.pvInc - p.pvLegacy) / p.unitPV;   // C at s = 0
   const k2 = (state.salary * p.fvContrib * p.discR) / p.unitPV;        // dC/ds per unit s
-  const closed = p.unitPV > 0 ? (state.salary - k1) / (state.salary + k2) : NaN;
+  /* the level target is salEnd*(1-s): the final working year's income in
+     spend mode, this year's in bank mode. Affine in s either way, so the
+     closed form only swaps which salary it equates against; at zero income
+     growth salEnd IS state.salary */
+  const closed = p.unitPV > 0 ? (p.salEnd - k1) / (p.salEnd + k2) : NaN;
   if (!Number.isFinite(closed) || state.allowBorrow) return closed;
   if (planAt(p.R, Math.min(1, Math.max(0, closed))).steps.length <= 1)
     return closed;                       // one segment: the closed form is exact
@@ -1368,13 +1407,31 @@ function simulate() {
      model still indexes each year by the age it ends at, so the row at
      age a reads the year-end slot a+1. */
   const rows = [];
-  for (let age = A0; age <= R - 1; age++)
+  /* per-year under income growth: the row at age a pays working year
+     k = a - A0, so its income and spending carry that year's values and
+     wd is spending minus income (negative = a contribution, and in bank
+     mode with declining income it can go POSITIVE, a working-year draw);
+     at zero growth both reduce to the old scalars. Income is recoverable
+     from any working row as spend - wd, which the chart's income line and
+     the tooltip both use. */
+  for (let age = A0; age <= R - 1; age++) {
     rows.push({ age, balance: workBal[idx(age)], phase: "work",
-                wd: -contribution, inc: 0, pen: 0, ss: 0,
-                p1: 0, p2: 0, s1: 0, s2: 0, spend: workSpend });
+                wd: -p.contribAt(age - A0), inc: 0, pen: 0, ss: 0,
+                p1: 0, p2: 0, s1: 0, s2: 0, spend: p.spendAt(age - A0) });
+  }
 
-  let bal = atRet;
+  /* the working years join the feasibility scan ONLY in bank mode with a
+     nonzero rate: that is the one path where contributions can go negative
+     and the working balance can dip below zero. Everywhere else working
+     contributions are non-negative, the balance cannot fall, and scanning
+     would only shift the reported minimum without changing feasibility. */
   let minBal = atRet, minAge = R, negFrom = null, negTo = null;
+  if (state.salGrowSave && (state.salGrowPct || 0) !== 0)
+    for (let k = 0; k < workBal.length; k++) {
+      if (workBal[k] < minBal) { minBal = workBal[k]; minAge = A0 + k; }
+      if (workBal[k] < -1e-6) { if (negFrom === null) negFrom = A0 + k; negTo = A0 + k; }
+    }
+  let bal = atRet;
   for (let age = R; age <= E - 1; age++) {
     const ae = age + 1;                       // the year-end slot this row reads
     const rk = growth[idx(ae)] / growth[idx(ae) - 1] - 1;
@@ -1497,6 +1554,10 @@ function clampVal(key, v) {
      floored at -20%. rateMid2 is excluded: its negative is the coupled
      sentinel. Money fields keep the non-negative fallthrough below. */
   if (["ratePct","rateEnd","rateMid"].includes(key)) return Math.max(v, -20);
+  /* real income growth is small and can be NEGATIVE; without this line the
+     money fallthrough below would silently clamp every decline to zero,
+     which is the case the setting exists for */
+  if (key === "salGrowPct") return Math.min(Math.max(v, -5), 5);
   if (key === "curveYMin")
     return Math.min(Math.max(Math.round(v), GRID.rate.lo),
                     Math.min(state.curveYMax - 1, GRID.rate.hi - 1));
@@ -1549,6 +1610,10 @@ const LINK_BASE = {
   /* appended when the claiming factors shipped: a link written before this key
      existed described the spouse's OWN record, which is what false means */
   ss2Spousal: false,
+  /* appended when household income growth shipped: a link written before this
+     key existed described level income, which is what 0 means, and spending
+     that moved with it, which is what false means */
+  salGrowPct: 0, salGrowSave: false,
 };
 const LINK_VER = "2";
 /* the parameters of a link for st, in state order, v first */
@@ -2012,6 +2077,25 @@ function buildInputs() {
       '<label class="adv-check"><input type="checkbox" id="v-inc2Cola"> ' +
         'Other income 2 is inflation adjusted</label>' +
       '</details>' +
+      '<details class="adv sub"' + ((state.salGrowPct !== 0 || state.salGrowSave) ? " open" : "") + '>' +
+      '<summary>Household income growth</summary>' +
+      '<div class="grid2">' +
+        pctField("salGrowPct", "Income growth (after inflation)", 0.1) +
+        '<div></div>' +
+      '</div>' +
+      '<label class="adv-check"><input type="checkbox" id="v-salGrowSave"> ' +
+        'Income changes go to savings, not spending</label>' +
+      '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
+        'Grows household income by this real rate each year until ' +
+        'retirement. Enter growth after inflation: raises that only match ' +
+        'inflation are 0 here. Unchecked, spending moves with income, the ' +
+        'savings rate stays the share you set, and the level comparison ' +
+        'uses your final working year. Checked, spending holds at this ' +
+        'year\'s level, raises add to savings, income declines draw from ' +
+        'savings, and the level comparison uses this year. While the rate ' +
+        'is not 0, a faint grey line shows income over the working years ' +
+        'on the chart.</div>' +
+      '</details>' +
       '<details class="adv sub"' + ((!state.penCola || !state.pen2Cola) ? " open" : "") + '>' +
       '<summary>Inflation (non-adjusted pensions)</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-penCola"> ' +
@@ -2147,7 +2231,7 @@ function buildInputs() {
                 "penAmt","penAge","penStop","ssAmt","ssAge","ssStop",
                 "pen2Amt","pen2Age","pen2Stop","ss2Amt","ss2Age","ss2Stop","spouseAge",
                 "inc1Amt","inc1Age","inc1Stop","inc2Amt","inc2Age","inc2Stop",
-                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2"];
+                "legacy","inflPct","tiltPct","rateEnd","rateMid","rateMid2","salGrowPct"];
   // glideJump is a boolean gate, handled in sync below
   for (const k of keys) wireBox(k, host.querySelector("#v-" + k));
 
@@ -2158,6 +2242,8 @@ function buildInputs() {
 
   const glideBox = host.querySelector("#v-glide");
   glideBox.addEventListener("change", e => { state.glide = e.target.checked; render(); pushHistory(); });
+  const sgSaveBox = host.querySelector("#v-salGrowSave");
+  sgSaveBox.addEventListener("change", e => { state.salGrowSave = e.target.checked; render(); pushHistory(); });
   const endSlider = host.querySelector("#v-rateEnd-slider");
   endSlider.addEventListener("input", e => { state.rateEnd = Number(e.target.value); render(); });
   endSlider.addEventListener("change", () => pushHistory());
@@ -2262,6 +2348,9 @@ function refreshInputs(m) {
   syncBox("v-endAge", state.endAge);
   syncBox("v-savePct", Math.round(state.savePct * 10) / 10);
   syncBox("v-ratePct", state.ratePct);
+  syncBox("v-salGrowPct", state.salGrowPct);
+  const sgSv = document.getElementById("v-salGrowSave");
+  if (sgSv) sgSv.checked = !!state.salGrowSave;
   const rSl = document.getElementById("v-ratePct-slider");
   if (rSl && document.activeElement !== rSl) rSl.value = state.ratePct;
   const tSl = document.getElementById("v-tiltPct-slider");
@@ -2426,6 +2515,15 @@ function refreshInputs(m) {
     const salField = salBox.closest(".field");
     if (salField) salField.classList.toggle("inert", m.nWork === 0);
   }
+  /* income growth is inapplicable without working years, same as income */
+  const sgBox = document.getElementById("v-salGrowPct");
+  if (sgBox) {
+    sgBox.disabled = m.nWork === 0;
+    const sgField = sgBox.closest(".field");
+    if (sgField) sgField.classList.toggle("inert", m.nWork === 0);
+  }
+  const sgSvBox = document.getElementById("v-salGrowSave");
+  if (sgSvBox) sgSvBox.disabled = m.nWork === 0;
 }
 
 /* ---------------- stats ---------------- */
@@ -2436,6 +2534,12 @@ function refreshInputs(m) {
 let lastRStar = null;
 function renderStats(m) {
   const saveYr = state.salary * state.savePct / 100;
+  /* under income growth these two stats are single numbers drawn from a
+     range: savings is the FIRST working year, working spending the LAST.
+     The sub-lines say which year, only when the setting is on. */
+  const grOn = state.salGrowPct !== 0 && m.nWork > 0;
+  const yr1 = t => grOn ? t + ", first year" : t;
+  const yrN = t => (grOn && !state.salGrowSave) ? t + ", final working year" : t;
   /* one extra class onto a stat's wrapper */
   const as = (cls, h) => h.replace('class="stat"', 'class="stat ' + cls + '"');
   const retStat = m.nRet === 0
@@ -2498,10 +2602,10 @@ function renderStats(m) {
   } else if (m.nRet === 0) {
     /* nothing to compare working spending against; the flat row stands */
     document.getElementById("stats").innerHTML =
-      stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)", perMo(saveYr)) +
+      stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)", yr1(perMo(saveYr))) +
       stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
       stat("Working spending", fmt$(m.workSpend), "var(--accum)",
-           perMo(m.workSpend)) +
+           yrN(perMo(m.workSpend))) +
       retStat;
   } else {
     /* The pair, then the rest. Level is the same test the retirement-age solve
@@ -2526,13 +2630,13 @@ function renderStats(m) {
     document.getElementById("stats").innerHTML =
       '<div class="lvl-pair">' +
         stat("Working spending", fmt$(m.workSpend), "var(--accum)",
-             perMo(m.workSpend)) +
+             yrN(perMo(m.workSpend))) +
         as("lvl-rel", stat("\u00a0", rel,
              mode === "off" ? "var(--bad)" : "var(--good)", "")) +
         retStat +
       '</div>' +
       '<div class="lvl-rest">' +
-        stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)", perMo(saveYr)) +
+        stat("Savings", fmt$(saveYr) + "/yr", "var(--ink)", yr1(perMo(saveYr))) +
         stat("Portfolio at " + m.R, fmt$(m.atRet), "var(--port-text)", "") +
       '</div>';
   }
@@ -2683,12 +2787,20 @@ function renderPlanTable(m) {
   const unit = state.futureOn
     ? "in future dollars at " + state.inflPct + "% inflation a year"
     : "in today's dollars";
-  const head = ["Age", "Phase", "Portfolio balance", "Spending",
-                "Guaranteed income", "Portfolio withdrawal"];
+  /* the household income column appears only while income growth is set:
+     it is then a series the chart draws, and the table's contract is to
+     hold what the chart shows. Working rows recover it as spend - wd, the
+     same identity the chart's line uses; retirement and terminal rows have
+     no household income and stay blank rather than printing a page of $0. */
+  const showHH = state.salGrowPct !== 0;
+  const head = ["Age", "Phase", "Portfolio balance"]
+    .concat(showHH ? ["Household income"] : [])
+    .concat(["Spending", "Guaranteed income", "Portfolio withdrawal"]);
   const body = v.rows.map(r =>
     "<tr><td>" + r.age + "</td><td>" +
     (r.terminal ? "scenario end" : r.phase === "retired" ? "retired" : "working") + "</td><td>" +
     fmt$(r.balance) + "</td><td>" +
+    (showHH ? ((r.phase === "work" && !r.terminal ? fmt$(r.spend - r.wd) : "") + "</td><td>") : "") +
     fmt$(r.spend) + "</td><td>" +
     fmt$(r.inc || 0) + "</td><td>" +
     fmt$(r.terminal ? 0 : r.wd) + "</td></tr>").join("");
@@ -2773,7 +2885,9 @@ function renderChart(m) {
     ? Math.max(...envHi.rows.map(d => d.spend), ...envLo.rows.map(d => d.spend))
     : 0;
   const flowMax = Math.max(envMax,
-    ...rows.map(d => Math.max(d.spend, d.inc))) * 1.15 || 1;
+    ...rows.map(d => Math.max(d.spend, d.inc,
+      state.salGrowPct !== 0 && d.phase === "work" && !d.terminal
+        ? d.spend - d.wd : 0))) * 1.15 || 1;
   const Y2 = v => plotB - v / flowMax * plotH;
 
   /* third axis: the (possibly gliding) growth rate, on its own scale, offset
@@ -3034,6 +3148,23 @@ function renderChart(m) {
       svg.appendChild(el("path", { d:stepPath(em.rows.slice(iR)), fill:"none",
         "stroke-width":1.6, "stroke-dasharray":"5 4",
         opacity:0.5, "pointer-events":"none", "class":"env-line s-decum" }));
+  /* faint income line over the working years, drawn whenever income growth
+     is set: the gap between it and the spending line is the money saved,
+     so the chart SHOWS which convention is running rather than leaving it
+     to the note. Solid soft-ink grey (--ink-soft carries its dark-mode
+     pair, so no new color enters the palette) at a THINNER weight than the
+     spending line: the weight difference identifies the two lines without
+     relying on hue, which grey against the working green does not provide
+     for color-blind readers, and it reads income as context rather than
+     answer. Appended BEFORE the spending line so spending wins wherever
+     they touch: at a zero savings rate the two coincide and the primary
+     series is the one that should show, and in bank mode with declining
+     income they genuinely cross. */
+  if (state.salGrowPct !== 0 && iR > 0)
+    svg.appendChild(el("path", { d: stepPath(rows.slice(0, iR).map(d =>
+        ({ age: d.age, spend: d.spend - d.wd, terminal: d.terminal }))),
+      fill:"none", stroke:"var(--ink-soft)", "stroke-width":1.4,
+      opacity:0.75, "class":"income-line", "pointer-events":"none" }));
   if (iR > 0)
     svg.appendChild(el("path", { d:stepPath(rows.slice(0, iR)), fill:"none",
       stroke:"var(--accum)", "stroke-width":3.2, "pointer-events":"none" }));
@@ -3343,6 +3474,9 @@ function attachTooltip() {
       (d.terminal ? ""
         : row("Spending", '<b style="color:' + spendColor + '">' + fmt$(d.spend) + "</b>")
           + (retired ? envRow("spend", "var(--decum)", false) : "")) +
+      (!retired && !d.terminal && state.salGrowPct !== 0
+        ? row("Income", '<span style="color:var(--ink-soft)">' + fmt$(d.spend - d.wd) + "</span>")
+        : "") +
       (retired && !d.terminal
         ? '<div class="sep"></div>' +
           row(d.wd >= 0 ? "Withdrawal" : "Surplus reinvested",
@@ -4149,6 +4283,11 @@ function buildReport() {
   add("End age", state.endAge);
   add("Retirement age", state.retAge);
   add("Household income", fmt$(state.salary), inert);
+  if (state.salGrowPct !== 0)
+    add("Income growth", (state.salGrowPct > 0 ? "+" : "") + state.salGrowPct
+        + "%/yr real; " + (state.salGrowSave
+          ? "income changes go to savings, spending holds at this year's level"
+          : "spending moves with income"), inert);
   add("Savings rate", state.savePct + "%", inert);
   add("Starting portfolio", fmt$(state.startBal));
   add("Legacy", fmt$(state.legacy));
