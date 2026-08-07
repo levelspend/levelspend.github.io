@@ -4498,16 +4498,15 @@ let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTime
   #chart #cross line { filter: drop-shadow(0 0 3px rgba(46,255,106,0.6)); }
   #chart circle.ret-handle.s-rate { filter: drop-shadow(0 0 4px rgba(255,176,0,0.55)); }
   #chart circle.ret-handle.s-rate:hover { filter: drop-shadow(0 0 9px rgba(255,176,0,0.9)); }
-  /* readouts burn green; a rolling readout burns brighter, then decays */
-  .stat .num { text-shadow: 0 0 9px rgba(var(--mx),0.4);
-               transition: text-shadow 0.35s ease; }
-  .stat .num.mx-roll { text-shadow: 0 0 16px rgba(var(--mx),0.95); }
+  /* readouts burn green */
+  .stat .num { text-shadow: 0 0 9px rgba(var(--mx),0.4); }
   /* the numerically larger of the two spending figures displays larger; the
      line box is held at the enlarged height at all times so the swap can
      never move the chart below it */
   .lvl-pair .num { text-shadow: 0 0 12px rgba(var(--mx),0.5);
-                   transition: font-size 0.25s ease; line-height:36px; }
-  .lvl-pair .num.lvl-hi { font-size: 33px; }
+                   line-height:36px; }
+  .lvl-pair .num.lvl-hi { font-size: 33px;
+                          text-shadow: 0 0 18px rgba(var(--mx),0.85); }
   .lvl-rel .num { line-height:36px; }
   /* phosphor ghosting: a slight double image on the title, monochrome on
      purpose; chromatic fringing is a color tube artifact, not this one */
@@ -4519,8 +4518,17 @@ let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTime
   /* the shipped build pulses the example scenario buttons once at 3s as a
      first-visit cue; this build has enough happening at boot without it */
   .solve-cue { animation: none; }
-  .solve { box-shadow: 0 0 10px rgba(var(--mx),0.3); }
-  .solve:hover { box-shadow: 0 0 16px rgba(var(--mx),0.5); }
+  .solve {
+    background:#0A1F12; color:var(--good);
+    border:1px solid var(--good); border-radius:0;
+    font-size:11px;
+    box-shadow: 0 0 10px rgba(var(--mx),0.3);
+  }
+  .solve:not(.settled):hover {
+    background:var(--good); color:#04140A;
+    box-shadow: 0 0 16px rgba(var(--mx),0.5);
+  }
+  .solve:not(.settled):hover .solve-val { color:#04140A; }
   #tip {
     z-index:2;
     background: rgba(0,14,7,0.93);
@@ -4545,12 +4553,32 @@ let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTime
       70%  { opacity:1; }
       100% { opacity:1; }
     }
-    /* portfolio sweep dot */
+    /* portfolio sweep dot and its scan line, both placed by the driver */
     .mx-sweep-dot { fill: var(--port);
       filter: drop-shadow(0 0 6px rgba(255,176,0,0.9)); }
+    .mx-scanline {
+      position:absolute; top:0; bottom:0; left:-1px; width:2px;
+      pointer-events:none; z-index:1; opacity:0;
+      transition: opacity 0.25s;
+      background: linear-gradient(180deg, transparent,
+        rgba(var(--mx),0.5) 30%, rgba(var(--mx),0.5) 70%, transparent);
+      box-shadow: 0 0 10px rgba(var(--mx),0.3);
+    }
+    /* the enlarged spending figure breathes; the stronger static glow
+       above is the reduced-motion fallback. A rolling counter suspends
+       the pulse so its own burn stays visible. */
+    .lvl-pair .num.lvl-hi { animation: mxHiPulse 2.6s ease-in-out infinite alternate; }
+    /* the pulse rests while a drag is in progress; the emphasis stays as
+       the stronger static glow so nothing competes with the live numbers */
+    html.mx-dragging .lvl-pair .num.lvl-hi { animation: none; }
+    @keyframes mxHiPulse {
+      from { text-shadow: 0 0 6px rgba(var(--mx),0.35); }
+      to   { text-shadow: 0 0 18px rgba(var(--mx),0.95),
+                          0 0 44px rgba(var(--mx),0.55); }
+    }
     /* buttons pulse while hovered; the static hover glow above remains
        the reduced-motion fallback */
-    .solve:hover { animation: mxBtnPulse 1.2s ease-in-out infinite alternate; }
+    .solve:not(.settled):hover { animation: mxBtnPulse 1.2s ease-in-out infinite alternate; }
     @keyframes mxBtnPulse {
       from { box-shadow: 0 0 10px rgba(var(--mx),0.35); }
       to   { box-shadow: 0 0 22px rgba(var(--mx),0.7); }
@@ -4566,7 +4594,7 @@ let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTime
         rgba(46,255,106,0.75) 50%, transparent);
       animation: mxKitt 4.5s ease-in-out infinite alternate;
     }
-    .mx-kitt-host:hover .mx-kitt { opacity:1; }
+    .mx-kitt.on { opacity:1; }
     @keyframes mxKitt {
       from { transform: translateX(0); }
       to   { transform: translateX(var(--kitt-travel, 60px)); }
@@ -4578,11 +4606,15 @@ let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTime
       z-index:98; pointer-events:none;
       background: linear-gradient(180deg, transparent,
         rgba(180,255,210,0.045), transparent);
-      animation: mxHum 8s linear infinite;
+      animation: mxHum 30s linear infinite;
+      animation-delay: 25s;
     }
+    /* one pass down the screen in the first 30% of the cycle, then the
+       band rests offscreen for the remainder */
     @keyframes mxHum {
-      from { transform: translateY(0); }
-      to   { transform: translateY(1000%); }
+      0%   { transform: translateY(0); }
+      30%  { transform: translateY(1000%); }
+      100% { transform: translateY(1000%); }
     }
     /* interference: every 26s the content jitters for about a quarter
        second in hard steps. On the content wrappers, never on body, since
@@ -4690,6 +4722,7 @@ var MxDecode = {
      The title re-decodes every 150s using the same machinery. */
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   function typeInto(el, ms, done) {
+    if (window.__mxGlyphSweep) window.__mxGlyphSweep(el);
     var full = el.textContent, i = 0;
     el.textContent = "";
     (function tick() {
@@ -4701,6 +4734,7 @@ var MxDecode = {
     })();
   }
   function decodeInto(el, dur, target) {
+    if (window.__mxGlyphSweep) window.__mxGlyphSweep(el);
     /* target must be the true text, passed by the caller when the element
        may already be showing churn. Deriving it from textContent bit us
        once: a background tab froze a decode mid churn, the next interval
@@ -4797,8 +4831,12 @@ var MxDecode = {
     "font-size:11px;color:var(--good);opacity:0.85;pointer-events:none;" +
     "text-shadow:0 0 8px rgba(46,255,106,0.6);transition:opacity 0.8s;";
   document.body.appendChild(el);
-  /* sequenced after the masthead: title finishes near 0.7s and the tagline
-     near 2.3s, so the banner starts at 2.9s rather than competing */
+  /* sequenced last: the banner starts only after the title, tagline, and
+     every label decode have finished. The finish time is derived from the
+     same selector, spacing, and duration the decode script uses, plus a
+     beat, so adding or removing fields in a future build keeps this true. */
+  var nLbl = document.querySelectorAll("label.lbl").length;
+  var start = 2600 + Math.max(0, nLbl - 1) * 140 + 800 + 400;
   var i = 0;
   setTimeout(function tick() {
     if (i <= text.length) {
@@ -4806,67 +4844,10 @@ var MxDecode = {
       i++;
       setTimeout(tick, 25);
     }
-  }, 2900);
+  }, start);
   /* stays resident as a live build readout, dimming once established */
-  setTimeout(function () { el.style.opacity = "0.55"; }, 8500);
-})();
-(function () {
-  /* decode counters: when a headline figure changes discretely, its digits
-     churn and resolve left to right. Changes arriving faster than QUIET
-     apart are a drag in progress and snap untouched. */
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  var statsEl = document.getElementById("stats");
-  if (!statsEl) return;
-  var QUIET = 150, DUR = 600;
-  var last = new Map();   /* label -> { text, t } */
-  var anims = new Map();  /* label -> { el, target, raf } */
-  var obs;
-  function write(el, text) {
-    obs.disconnect();
-    el.textContent = text;
-    obs.observe(statsEl, { childList: true, characterData: true, subtree: true });
-  }
-  function snapAll() {
-    anims.forEach(function (a) {
-      cancelAnimationFrame(a.raf);
-      a.el.classList.remove("mx-roll");
-      write(a.el, a.target);
-    });
-    anims.clear();
-  }
-  function scan() {
-    var now = performance.now();
-    statsEl.querySelectorAll(".stat").forEach(function (st) {
-      var lblEl = st.querySelector(".lbl"), numEl = st.querySelector(".num");
-      if (!lblEl || !numEl) return;
-      var label = lblEl.textContent, text = numEl.textContent;
-      var prev = last.get(label);
-      last.set(label, { text: text, t: now });
-      if (!prev || prev.text === text) return;
-      var running = anims.get(label);
-      if (running) {
-        cancelAnimationFrame(running.raf);
-        running.el.classList.remove("mx-roll");
-        anims.delete(label);
-      }
-      if (now - prev.t < QUIET) return;
-      if (MxScramble.step(text, 0, function () { return 0; }) === text) return;
-      var t0 = now, anim = { el: numEl, target: text, raf: 0 };
-      anims.set(label, anim);
-      numEl.classList.add("mx-roll");
-      function frame(t) {
-        var p = Math.min(1, (t - t0) / DUR);
-        write(anim.el, MxScramble.step(anim.target, p));
-        if (p < 1) anim.raf = requestAnimationFrame(frame);
-        else { anim.el.classList.remove("mx-roll"); anims.delete(label); }
-      }
-      anim.raf = requestAnimationFrame(frame);
-    });
-  }
-  obs = new MutationObserver(scan);
-  obs.observe(statsEl, { childList: true, characterData: true, subtree: true });
-  window.addEventListener("beforeprint", snapAll);
-  scan(); /* seed the baseline; first paint does not scramble */
+  setTimeout(function () { el.style.opacity = "0.55"; },
+    start + text.length * 25 + 2500);
 })();
 (function () {
   /* the numerically larger of the two spending figures displays larger.
@@ -4890,8 +4871,15 @@ var MxDecode = {
     if (!w || !r) return;
     var wv = val(w), rv = val(r);
     var ok = wv !== null && rv !== null;
-    w.classList.toggle("lvl-hi", ok && wv > rv);
-    r.classList.toggle("lvl-hi", ok && rv > wv);
+    /* dead zone: within the shipped level tolerance (a gap under $100 or
+       0.1% of working spending) the pair counts as level and BOTH sides
+       are enlarged, so equality reads as shared prominence rather than
+       demotion. Outside it, only the larger side is. Dragging through the
+       crossing still changes emphasis once, not in a flutter. */
+    var eps = ok ? Math.max(100, 0.001 * Math.abs(wv)) : 0;
+    var level = ok && Math.abs(wv - rv) <= eps;
+    w.classList.toggle("lvl-hi", ok && (level || wv - rv > eps));
+    r.classList.toggle("lvl-hi", ok && (level || rv - wv > eps));
   }
   new MutationObserver(size)
     .observe(statsEl, { childList: true, characterData: true, subtree: true });
@@ -4910,7 +4898,6 @@ var MxDecode = {
     if (!p) return;
     if (getComputedStyle(p).position === "static")
       p.style.position = "relative";
-    p.classList.add("mx-kitt-host");
     var bar = document.createElement("div");
     bar.className = "mx-kitt";
     p.appendChild(bar);
@@ -4922,30 +4909,275 @@ var MxDecode = {
         Math.max(0, rr.width - 34) + "px");
     }
     place();
-    p.addEventListener("pointerenter", place);
+    /* the bar lights only while the pointer is over its own slider; the
+       overlay itself is pointer-events none, so hovering the track is
+       hovering the input and the pairing cannot leak to a sibling */
+    r.addEventListener("pointerenter", function () {
+      place();
+      bar.classList.add("on");
+    });
+    r.addEventListener("pointerleave", function () {
+      bar.classList.remove("on");
+    });
     window.addEventListener("resize", place);
   });
 })();
 (function () {
-  /* portfolio sweep: every 10s a bright dot rides the balance line left to
-     right over 3s, then rests. The dot samples the live path each frame
-     via getPointAtLength, so it stays on the curve through drags and
-     re-renders, and re-appends itself if a rebuild destroys it. The
-     balance line is picked out from its port-stroke siblings (the axis
-     spine and the dashed envelope companions) by excluding env-bal and
-     matching the shipped 2.4 stroke width; if a future build changes that
-     width, the dot simply never appears. Left to right follows from the
-     shipped path builder, which walks rows in ascending age. */
+  /* button hover readout: the lead span churns and resolves once per
+     entry. The shipped code rewrites the lead's textContent every render,
+     so before each write the decode checks that the current text is its
+     own last write and yields immediately if a render got there first; on
+     leave it restores the label only if it still owns it. Settled and
+     disabled buttons are left alone. */
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll(".solve").forEach(function (btn) {
+    var lead = btn.querySelector("span:first-child");
+    if (!lead || lead.classList.contains("solve-val")) return;
+    var busy = false, target = "", lastW = "";
+    btn.addEventListener("pointerenter", function () {
+      if (busy || btn.classList.contains("settled") || btn.disabled) return;
+      if (window.__mxGlyphSweep) window.__mxGlyphSweep(lead);
+      busy = true;
+      target = lead.textContent;
+      lastW = target;
+      var t0 = performance.now();
+      (function frame(t) {
+        if (!busy) return;
+        if (lead.textContent !== lastW) { busy = false; return; }
+        var p = Math.min(1, (t - t0) / 320);
+        lastW = MxDecode.step(target, p);
+        lead.textContent = lastW;
+        if (p < 1) requestAnimationFrame(frame);
+        else busy = false;
+      })(t0);
+    });
+    btn.addEventListener("pointerleave", function () {
+      if (busy && lead.textContent === lastW) lead.textContent = target;
+      busy = false;
+    });
+  });
+})();
+(function () {
+  /* sparse corruption, page wide: every couple of seconds one letter
+     somewhere in the page's prose flickers to a glyph inside a span
+     locked to the letter's measured width, so no line ever reflows, then
+     repairs itself. Excluded on principle, not convenience: figures and
+     sub-lines (.num, .sub), buttons (a hovered readout captures label
+     text and would bake a glyph in), the tooltip (live data), chart svg
+     text (axis and labels are data), and all control and non-prose
+     elements. Digits are never swapped anywhere: letters only, so no
+     number can be false even for a frame. Node lists are re-collected
+     each tick because wrapping splits text nodes; spans destroyed by a
+     re-render are simply skipped on restore. Sixteen at most at once. */
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var POOL = "01$%#*\u30a2\u30ab\u30b5\u30bf\u30ca\u30cd\u30de\u30e9";
+  var SKIP = { SCRIPT:1, STYLE:1, INPUT:1, TEXTAREA:1,
+               SELECT:1, OPTION:1, svg:1, SVG:1 };
+  function collect() {
+    var out = [];
+    (function walk(n) {
+      for (var c = n.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3 && c.data.trim().length > 3) out.push(c);
+        else if (c.nodeType === 1) {
+          if (SKIP[c.tagName]) continue;
+          if (c.matches && c.matches("#tip, .num, .sub, .solve-val")) continue;
+          walk(c);
+        }
+      }
+    })(document.body);
+    return out;
+  }
+  var active = 0, live = new Set();
+  function restoreEntry(en) {
+    clearTimeout(en.tm);
+    var p = en.span.parentNode;
+    if (p) {
+      p.replaceChild(document.createTextNode(en.orig), en.span);
+      p.normalize();
+    }
+    live.delete(en);
+    active--;
+  }
+  /* force-restore every active glyph inside an element; the button
+     readout calls this before capturing a label as its decode target */
+  window.__mxGlyphSweep = function (el) {
+    live.forEach(function (en) {
+      if (en.span.parentNode && el.contains(en.span)) restoreEntry(en);
+    });
+  };
+  setInterval(function () {
+    if (active >= 16) return;
+    var nodes = collect();
+    if (!nodes.length) return;
+    /* a rejected pick used to waste the whole tick, and with most of the
+       page's text off screen, most ticks were wasted. Retry until a
+       visible letter is found or the attempt budget runs out. */
+    var node, i, orig, range, cr, tries = 10;
+    while (tries-- > 0) {
+      node = nodes[(Math.random() * nodes.length) | 0];
+      i = (Math.random() * node.data.length) | 0;
+      orig = node.data.charAt(i);
+      if (!/[A-Za-z]/.test(orig)) continue;
+      range = document.createRange();
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      cr = range.getBoundingClientRect();
+      if (cr.width === 0 || cr.bottom < 0 || cr.top > window.innerHeight ||
+          cr.right < 0 || cr.left > window.innerWidth) continue;
+      /* never while that solver is hovered: the readout owns the label
+         through its capture and decode window */
+      var host = node.parentElement &&
+        node.parentElement.closest && node.parentElement.closest(".solve");
+      if (host && host.matches(":hover")) continue;
+      break;
+    }
+    if (tries < 0) return;
+    var span = document.createElement("span");
+    try { range.surroundContents(span); } catch (e) { return; }
+    var w = span.getBoundingClientRect().width;
+    span.style.cssText = "display:inline-block;width:" + w +
+      "px;text-align:center;";
+    span.textContent = POOL.charAt((Math.random() * POOL.length) | 0);
+    var en = { span: span, orig: orig, tm: 0 };
+    en.tm = setTimeout(function () { restoreEntry(en); },
+      600 + Math.random() * 900);
+    live.add(en);
+    active++;
+  }, 400);
+})();
+(function () {
+  /* drag detection for the pulse rest: a pointer held down on the chart or
+     on any range control marks the document as dragging until release */
+  var root = document.documentElement;
+  function down(e) {
+    if (e.target.closest && (e.target.closest("#chart") ||
+        (e.target.matches && e.target.matches('input[type="range"]'))))
+      root.classList.add("mx-dragging");
+  }
+  function up() { root.classList.remove("mx-dragging"); }
+  window.addEventListener("pointerdown", down, true);
+  window.addEventListener("pointerup", up, true);
+  window.addEventListener("pointercancel", up, true);
+})();
+(function () {
+  /* motion ghosting, deterministic rewrite. The first version faded an
+     accumulation buffer in place, and in the field the residue held and
+     then winked out; after two failed repairs to that mechanism it is
+     gone. Now each ghost is a timestamped snapshot of the three lines'
+     path data, and every frame the layer is redrawn from scratch with
+     each ghost's opacity computed from its age: alpha runs analytically
+     to zero over its lifetime, so fading cannot fail and nothing can
+     vanish in a step, independent of frame rate or compositing behavior.
+     Continuous drags snapshot at most every 70ms, which draws the smear;
+     a discrete retirement-age jump snapshots the previous position once,
+     the after-image. Idle costs nothing once the last ghost expires. */
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var box = document.getElementById("chartBox");
   var svg = document.getElementById("chart");
-  if (!svg) return;
+  if (!box || !svg) return;
+  var c = document.createElement("canvas");
+  c.style.cssText = "position:absolute;pointer-events:none;z-index:1;";
+  box.insertBefore(c, svg.nextSibling);
+  var g = c.getContext("2d");
+  var COLS = ["rgba(46,255,106,0.30)", "rgba(220,255,236,0.35)",
+              "rgba(255,176,0,0.20)"];
+  var LIFE = 900, GAP = 70, MAX = 30;
+  var ghosts = [], lastD = ["", "", ""], lastPush = 0, cleared = true;
+  function paths() {
+    var a = null, d = null, port = null, i;
+    var pa = svg.querySelectorAll('path[stroke="var(--accum)"]');
+    for (i = 0; i < pa.length; i++)
+      if (pa[i].getAttribute("stroke-width") === "3.2") { a = pa[i]; break; }
+    var pd = svg.querySelectorAll("path.s-decum");
+    for (i = 0; i < pd.length; i++)
+      if (!pd[i].classList.contains("env-line") &&
+          pd[i].getAttribute("stroke-width") === "3.2") { d = pd[i]; break; }
+    var ps = svg.querySelectorAll("path.port-stroke");
+    for (i = 0; i < ps.length; i++)
+      if (!ps[i].classList.contains("env-bal") &&
+          ps[i].getAttribute("stroke-width") === "2.4") { port = ps[i]; break; }
+    return [a, d, port];
+  }
+  function cc(d) { var m = d.match(/[ML]/g); return m ? m.length : 0; }
+  requestAnimationFrame(function frame(t) {
+    requestAnimationFrame(frame);
+    var sr = svg.getBoundingClientRect(), br = box.getBoundingClientRect();
+    if (sr.width === 0) return;
+    var W = Math.round(sr.width), H = Math.round(sr.height);
+    if (c.width !== W || c.height !== H) {
+      c.width = W; c.height = H;
+      c.style.left = (sr.left - br.left) + "px";
+      c.style.top = (sr.top - br.top) + "px";
+      c.style.width = W + "px"; c.style.height = H + "px";
+      ghosts = []; lastD = ["", "", ""]; cleared = true;
+    }
+    var ds = paths().map(function (p) {
+      return p ? (p.getAttribute("d") || "") : "";
+    });
+    var moved = ds[0] !== lastD[0] || ds[1] !== lastD[1] || ds[2] !== lastD[2];
+    if (moved && lastD[0] !== "") {
+      var discrete = cc(ds[0]) !== cc(lastD[0]) || cc(ds[1]) !== cc(lastD[1]);
+      if (discrete) ghosts.push({ set: lastD.slice(), t0: t });
+      else if (t - lastPush > GAP) {
+        ghosts.push({ set: ds.slice(), t0: t });
+        lastPush = t;
+      }
+      if (ghosts.length > MAX) ghosts.shift();
+    }
+    lastD = ds;
+    ghosts = ghosts.filter(function (gh) { return t - gh.t0 < LIFE; });
+    if (!ghosts.length) {
+      if (!cleared) { g.clearRect(0, 0, W, H); cleared = true; }
+      return;
+    }
+    g.clearRect(0, 0, W, H);
+    cleared = false;
+    g.lineWidth = 2.4; g.lineJoin = "round"; g.lineCap = "round";
+    ghosts.forEach(function (gh) {
+      var a = 1 - (t - gh.t0) / LIFE;
+      g.globalAlpha = a;
+      for (var i = 0; i < 3; i++) {
+        if (!gh.set[i]) continue;
+        try {
+          g.strokeStyle = COLS[i];
+          g.stroke(new Path2D(gh.set[i]));
+        } catch (e) {}
+      }
+    });
+    g.globalAlpha = 1;
+  });
+})();
+(function () {
+  /* scan driver: every 12s a vertical scan line makes one left-to-right
+     pass over the plot in 3.5s, carrying the portfolio dot on the balance
+     line at the same x, then both rest until the next pass. One clock
+     places both, so they cannot drift apart. Travel is restricted to the
+     axis span; bounds mirror the shipped plot margins (mL 66, mR 66 or
+     128 under glide), and if those change in a future build the line runs
+     slightly wide, a cosmetic degrade. The dot's y comes from a binary
+     search along the live path at the line's x, so it stays on the curve
+     through drags and re-renders. Both hold until the boot text cascade
+     and banner have finished, derived from the same constants those use. */
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var box = document.getElementById("chartBox");
+  var svg = document.getElementById("chart");
+  if (!box || !svg) return;
+  var line = document.createElement("div");
+  line.className = "mx-scanline";
+  box.appendChild(line);
   var NS = "http://www.w3.org/2000/svg";
   var dot = document.createElementNS(NS, "circle");
   dot.setAttribute("r", "4");
   dot.setAttribute("class", "mx-sweep-dot");
   dot.setAttribute("pointer-events", "none");
   dot.setAttribute("visibility", "hidden");
-  var CYCLE = 10000, SWEEP = 3000;
+  var CYCLE = 12000, SWEEP = 3500;
+  var nLbl = document.querySelectorAll("label.lbl").length;
+  var HOLD = 2600 + Math.max(0, nLbl - 1) * 140 + 800 + 400 + 1400;
+  var t0 = performance.now();
+  function mR() {
+    try { return state.glide ? 128 : 66; } catch (e) { return 66; }
+  }
   function balancePath() {
     var ps = svg.querySelectorAll("path.port-stroke");
     for (var i = 0; i < ps.length; i++)
@@ -4953,16 +5185,38 @@ var MxDecode = {
           ps[i].getAttribute("stroke-width") === "2.4") return ps[i];
     return null;
   }
+  function yAt(p, x) {
+    var lo = 0, hi = p.getTotalLength(), pt;
+    for (var i = 0; i < 14; i++) {
+      var mid = (lo + hi) / 2;
+      pt = p.getPointAtLength(mid);
+      if (pt.x < x) lo = mid; else hi = mid;
+    }
+    return p.getPointAtLength((lo + hi) / 2);
+  }
+  function rest() {
+    line.style.opacity = "0";
+    dot.setAttribute("visibility", "hidden");
+  }
   requestAnimationFrame(function frame(t) {
     requestAnimationFrame(frame);
-    var ph = t % CYCLE;
-    if (ph > SWEEP) { dot.setAttribute("visibility", "hidden"); return; }
+    if (t - t0 < HOLD) { rest(); return; }
+    var ph = (t - t0 - HOLD) % CYCLE;
+    if (ph > SWEEP) { rest(); return; }
+    var sr = svg.getBoundingClientRect(), br = box.getBoundingClientRect();
+    if (sr.width === 0) return;
+    var lo = 66 + 1, hi = sr.width - mR() - 1;
+    if (hi <= lo) return;
+    var f = ph / SWEEP;
+    f = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+    var x = lo + f * (hi - lo);
+    line.style.opacity = "1";
+    line.style.transform =
+      "translateX(" + ((sr.left - br.left) + x) + "px)";
     var p = balancePath();
     if (!p) { dot.setAttribute("visibility", "hidden"); return; }
     if (dot.parentNode !== svg) svg.appendChild(dot);
-    var f = ph / SWEEP;
-    f = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
-    var pt = p.getPointAtLength(f * p.getTotalLength());
+    var pt = yAt(p, x);
     dot.setAttribute("cx", pt.x);
     dot.setAttribute("cy", pt.y);
     dot.setAttribute("visibility", "visible");
