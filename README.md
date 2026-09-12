@@ -6,8 +6,8 @@ and Social Security can sustain from now through a chosen end age, with the port
 
 It answers two questions directly:
 
-- **Given my savings rate, what is the earliest retirement age at which my
-  spending can stay level for life?**
+- **Given my savings rate, at what retirement age does my spending come
+  closest to level for life?**
 - **Given my chosen retirement age, what savings rate makes it work?**
 
 Both are solved directly and applied with one click.
@@ -17,7 +17,10 @@ Both are solved directly and applied with one click.
 **[Open the tool](https://levelspend.github.io/)** in your browser, or
 download `index.html` and open it locally. It is one self-contained file with
 no dependencies, no server, and no build step. Nothing you enter leaves your
-browser; there is no tracking, storage, or network activity of any kind.
+browser: once loaded, the page makes no network requests, sets no cookies, and
+writes nothing to local storage. What stays on your machine is what your
+browser keeps for any page: a cached copy, this tab's Back history, and any
+link you copy into the address bar.
 Step-by-step instructions for working, retired, and semi-retired users are at
 the bottom of the page.
 
@@ -35,8 +38,8 @@ benefit estimates) and read off the recalculated plan.
   by default, or a path you draw or type year by year under Advanced. No one
   knows the return in advance; try several and see how much the results move.
 
-These omissions are intentional. The tool answers one question and answers it transparently: given an assumed return, what level of real spending is consistent with your resources? The whole model is about 480 lines of readable JavaScript inside the file,
-just under 800 with its comments, marked off by a comment that begins
+These omissions are intentional. The tool answers one question and answers it transparently: given an assumed return, what level of real spending is consistent with your resources? The whole model is about 500 lines of readable JavaScript inside the file,
+about 850 with its comments, marked off by a comment that begins
 `---- model ----`.
 
 ## Method
@@ -58,18 +61,22 @@ spending amounts match to the dollar whenever a level rate exists between 0
 and 100%. That solve is a closed form when the plan is fully level, and a
 bisection on the first segment when the no-borrow rule splits it. The
 retirement age is a whole number, so its solve returns the year closest to
-level and a step usually remains. On the working example it returns 62, where
-retirement spending falls about $1,400 short of working spending; the level
-point itself falls at age 62.6.
+level and a step usually remains. On the working example it returns 63, where
+retirement spending runs about $440 above working spending; a year earlier it
+would fall about $3,300 short.
 
 ## Tests
 
 The model has a test suite: run `node test/model.test.mjs` with
 [Node.js](https://nodejs.org). It needs Node and nothing else to install. On
 each run the suite slices the model region out of `index.html` and imports
-it, so the code under test is the file itself, and it checks 80 assertions
+it, so the code under test is the file itself, and it checks 78 assertions
 against it, from the Social Security claiming factor table to the terminal
 balance landing on the legacy amount.
+
+A second suite, `test/ui.test.mjs`, drives the page in jsdom (`npm install
+jsdom`, then `node test/ui.test.mjs`) and checks what the model suite cannot
+reach: chart drags, Back history, and the labels on the input panel.
 
 ## Feedback / Contact
 

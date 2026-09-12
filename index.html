@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.08.03f -->
+<!-- LevelSpend build 2026.09.12b -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -529,7 +529,7 @@
     <button class="mast-btn" id="shareBtn" aria-label="Copy scenario link"
       title="Copy a link that reopens the tool with your current inputs. The link is the scenario's only storage; bookmark it or paste it anywhere to keep it.">copy link</button>
     <button class="mast-btn" id="printBtn" aria-label="Print scenario report"
-      title="Open your browser's print dialog with a two-page scenario report: inputs and results, then the chart. Choose landscape in the dialog for a larger chart, or Save as PDF to keep a dated copy with a live scenario link.">print</button>
+      title="Open your browser's print dialog with a scenario report: inputs and results, then the chart, then the plan year by year. Choose landscape in the dialog for a larger chart, or Save as PDF to keep a dated copy with a live scenario link.">print</button>
   </span>
 </div>
 <div class="cols">
@@ -753,7 +753,8 @@
           <li>Retired: the new <b>Retirement spending</b> is your
               spending level for the year ahead.</li>
           <li>Press <b>copy link</b> (top right) to make a bookmarkable
-              link of your inputs. Nothing is stored otherwise.</li>
+              link of your inputs. Otherwise only this tab's Back history
+              keeps them.</li>
         </ol>
       </div>
     </div>
@@ -807,7 +808,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.08.03f</span>
+  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.09.12b</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -1049,11 +1050,12 @@ function buildSchedule(A0, E, Rkink) {
 
    Retirement payments sit on the R+k grid, k = 1..m. For the whole-year R
    the tool plans in, that grid is exactly the ages R+1 through E. A
-   fractional R (solveRStarExact, which locates the crossing between two
-   birthdays) rides the same grid with growth and discount factors
+   fractional R would ride the same grid with growth and discount factors
    interpolated between whole-year nodes, while income-stream PVs stay on
-   the whole-year grid: a sub-year approximation that feeds a readout and
-   never a plan. */
+   the whole-year grid; nothing on the page passes one, since the tool
+   plans in whole years and the step at each birthday (the last partial
+   year's contribution is dropped) means the level gap can change sign
+   between two ages without crossing zero in between. */
 /* ---- Social Security claiming factor ----
    The amount entered is the benefit at the entered start age. When the
    retirement age moves past that start age, the clamp above already delays
@@ -1072,8 +1074,8 @@ function buildSchedule(A0, E, Rkink) {
    are not close enough to share one: substituting the own-record factors
    for a spousal benefit runs about 7% low between 62 and full retirement
    age and up to 24% high for a delay past it, which is why the flag exists
-   rather than an approximation. Fractional a and R are allowed
-   (solveRStarExact bisects between whole years). */
+   rather than an approximation. Fractional a and R are accepted, though
+   nothing on the page passes one. */
 function claimFactor(a, spousal) {
   const FRA = 67;
   if (spousal) {
@@ -1460,7 +1462,10 @@ function simulate() {
   /* s* is read by the savings-rate readout and its button, and skipped by
      the feasibility search, so it is computed only when it is asked for */
   return { rows, atRet, S, workSpend, replacement: S / workSpend,
-           get sStar() { return solveSStar(p); },
+           get sStar() {           // read at several sites per render; solved once
+             if (this._sStar === undefined) this._sStar = solveSStar(p);
+             return this._sStar;
+           },
            pvInc: p.pvInc, steps, R, E, nWork, nRet, A0,
            feasible, minBal, minAge, negFrom, negTo };
 }
@@ -1494,19 +1499,6 @@ function solveRStar() {
   return null;
 }
 
-/* Exact (non-integer) level crossing within (Rint-1, Rint). The gap rises
-   with R and is continuous within a segmentation regime, so plain bisection
-   converges fast. Nothing on the page calls this: the readouts report whole
-   years. It is kept because it is the honest answer to "when exactly", and
-   costs nine lines to keep working. */
-function solveRStarExact(Rint) {
-  let lo = Rint - 1, hi = Rint;
-  for (let i = 0; i < 40; i++) {
-    const mid = (lo + hi) / 2;
-    if (levelGapAt(mid) >= 0) hi = mid; else lo = mid;
-  }
-  return hi;
-}
 /* ---- input clamping ----
    Every entry path runs through this: typed edits, chart drags, preset
    buttons and scenario links. It sits inside the model region because it
@@ -1881,7 +1873,7 @@ function moneyField(key, label, step, title) {
   /* text (not number) input: number inputs reject thousands separators.
      inputmode keeps the numeric keypad on mobile. */
   return '<div class="field"' + (title ? ' title="' + title + '"' : '') +
-    '><label class="lbl">' + label + '</label>' +
+    '><label class="lbl" for="v-' + key + '">' + label + '</label>' +
     '<div class="money"><span class="unit">$</span><div class="frame">' +
     '<input type="text" inputmode="numeric" autocomplete="off" ' +
     'class="numbox" id="v-' + key + '">' +
@@ -1890,13 +1882,13 @@ function moneyField(key, label, step, title) {
     '</div></div></div>';
 }
 function pctField(key, label, step) {
-  return '<div class="field"><label class="lbl">' + label + '</label>' +
+  return '<div class="field"><label class="lbl" for="v-' + key + '">' + label + '</label>' +
     '<div class="pct"><input type="number" class="numbox" id="v-' + key +
     '" step="' + step + '"><span class="unit">%</span></div></div>';
 }
 function numField(key, label, step, ph, title) {
   return '<div class="field"' + (title ? ' title="' + title + '"' : '') +
-    '><label class="lbl">' + label + '</label>' +
+    '><label class="lbl" for="v-' + key + '">' + label + '</label>' +
     '<input type="number" class="numbox" id="v-' + key + '" step="' + step + '"' +
     (ph ? ' placeholder="' + ph + '"' : '') + '></div>';
 }
@@ -2445,7 +2437,7 @@ function refreshInputs(m) {
     /* level is a settled state, not a press. It used to render at full
        saturation with the shock on its second line, so the one button that
        could do nothing looked exactly like the one that could. */
-    const sLevel = !(m.sStar <= 0) && !degen
+    const sLevel = !(m.sStar <= 0) && !degen && m.sStar <= 1
                    && Math.abs(state.savePct - sTarget) < 0.05;
     /* the lead is what pressing would write, so it uses the CLAMPED rate: the
        face must not promise a rate the clamp will not deliver. The sub-line
@@ -3333,7 +3325,7 @@ function attachRateDrag() {
          Clamped to keep retirement strictly inside (start age, end age)
          so the kink stays defined mid-drag. */
       if (dragKey === "rateMid" || dragKey === "rateMid2") {
-        let a = clampVal("retAge", ageAtX(e, rect));
+        let a = clampVal("retAge", Math.min(Math.max(ageAtX(e, rect), geom.x0), geom.x1));
         if (a !== null) {
           a = Math.min(Math.max(a, state.startAge + 1), state.endAge - 1);
           state.retAge = a;
@@ -3341,7 +3333,11 @@ function attachRateDrag() {
         }
       }
     } else if (dragMode === "ret") {
-      const v = clampVal("retAge", ageAtX(e, rect));
+      /* the pointer's age is clamped to the plotted span first: an overshoot
+         past the right edge used to reach clampVal as an age past the end
+         age, which ratcheted the end age up, widened the axis, and mapped
+         the same pixel to a later age still on the next move */
+      const v = clampVal("retAge", Math.min(Math.max(ageAtX(e, rect), geom.x0), geom.x1));
       if (v === null || v === state.retAge) return;
       state.retAge = v;
       handSetDec = true;
@@ -3366,7 +3362,9 @@ function attachRateDrag() {
         /* the band's left edge sits at the first paid age, which is the
            start age itself (primary timeline); converted back to the
            spouse's own age for slot-2 streams */
-        let v = Math.max(Math.round(age), state.retAge) - off;
+        /* capped a year short of the end age so the band keeps one paid year
+           and its edge stays on the chart to be dragged back */
+        let v = Math.min(Math.max(Math.round(age), state.retAge), geom.x1 - 1) - off;
         if (v === state[st.age]) return;
         state[st.age] = v;
         if (dragMeta.anchor) {
@@ -3684,8 +3682,12 @@ function minFeasibleStartBal() {
    browser Back button steps through previous inputs; popstate restores without
    pushing. pushState is wrapped because some browsers restrict it on file:// */
 let lastSnap = null;
+/* the drawn curves live beside state, not in it, so a snapshot of state
+   alone left every paint stroke, reset, shuffle and apply outside history:
+   nothing was pushed, and Back never restored or cleared a drawing */
+const snapshot = () => JSON.stringify({ s: state, rc: rateCurve, tc: tiltCurve });
 function pushHistory() {
-  const snap = JSON.stringify(state);
+  const snap = snapshot();
   if (snap === lastSnap) return;
   /* new entries use the bare URL: any edit clears a scenario hash from the
      address bar, so a visible hash always means "this URL IS the current
@@ -3697,8 +3699,12 @@ function pushHistory() {
 }
 window.addEventListener("popstate", e => {
   if (!e.state) return;
-  Object.assign(state, e.state);
-  lastSnap = JSON.stringify(state);
+  if (e.state.s) {
+    Object.assign(state, e.state.s);
+    rateCurve = e.state.rc || {};
+    tiltCurve = e.state.tc || {};
+  } else Object.assign(state, e.state);   // an entry written before curves were snapshotted
+  lastSnap = snapshot();
   render();
 });
 
@@ -3773,7 +3779,7 @@ window.addEventListener("hashchange", () => {
   ratchetNote = "";
   buildInputs();                           // rebuild so drawers open as on a fresh load
   render();
-  const snap = JSON.stringify(state);
+  const snap = snapshot();
   try { history.replaceState(JSON.parse(snap), "", location.href); } catch (e) {}
   lastSnap = snap;
 });
@@ -4440,7 +4446,7 @@ document.getElementById("shareBtn").addEventListener("click", async () => {
     window.prompt("Copy this link:", link);
   }
 });
-lastSnap = JSON.stringify(state);
+lastSnap = snapshot();
 try { history.replaceState(JSON.parse(lastSnap), ""); } catch (e) { /* file:// may block */ }
 let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(render, 120); });
 </script>
