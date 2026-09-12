@@ -10,10 +10,10 @@ const b = lines.findIndex(l => l.includes('---- model ----'));
 const e = lines.findIndex(l => l.includes('---- end model ----'));
 if (b < 0 || e < 0) { console.error('model markers not found'); process.exit(1); }
 const mod = lines.slice(b, e + 1).join('\n') +
-  '\nexport { state, planAt, simulate, solveRStar, solveRStarExact, solveSStar, levelGapAt, clampVal, buildSchedule, ssFactorAt, ssScale, ss2Scale, claimFactor, claimCap, claimClamp };\n';
+  '\nexport { state, planAt, simulate, solveRStar, solveSStar, levelGapAt, clampVal, buildSchedule, ssFactorAt, ssScale, ss2Scale, claimFactor, claimCap, claimClamp };\n';
 const tmp = join(mkdtempSync(join(tmpdir(), 'ls-')), 'model.mjs');
 writeFileSync(tmp, mod);
-const { state, planAt, simulate, solveRStar, solveRStarExact, solveSStar,
+const { state, planAt, simulate, solveRStar, solveSStar,
         levelGapAt, ssFactorAt, ssScale, ss2Scale, claimFactor, claimCap, claimClamp } = await import('url').then(u => import(u.pathToFileURL(tmp).href));
 
 let fail = 0;
@@ -73,14 +73,6 @@ ok('scale continuous at R=ssAge', near(ssScale(62 + 1e-9), 1, 1e-6));
         : (Math.abs(levelGapAt(R-1)) <= Math.abs(levelGapAt(R)) ? R-1 : R);
       break; }
   ok('solveRStar matches brute-force scan', rStar === brute, rStar + ' vs ' + brute);
-  /* exact crossing: bisection lands where gap ~ 0 and inside the bracket */
-  for (let R=state.startAge+1; R<=state.endAge-1; R++)
-    if (levelGapAt(R-1) < 0 && levelGapAt(R) >= 0) {
-      const x = solveRStarExact(R);
-      ok('solveRStarExact inside bracket', x > R-1 && x <= R, x.toFixed(4));
-      ok('gap at exact crossing ~ 0', Math.abs(levelGapAt(x)) < 1,
-         levelGapAt(x).toExponential(2));
-      break; }
 }
 
 /* regression anchors: values measured against 2026.07.25i during the
