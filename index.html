@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- LevelSpend build 2026.09.12b -->
+<!-- LevelSpend build 2026.09.30b -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -591,7 +591,10 @@
       <div style="font-size:11px; color:var(--ink-soft); line-height:1.45; margin-top:6px;">
         Draw the curve, or type into the box below: it holds the drawn
         years as a series of annual real returns in percent, one per year,
-        starting at the age shown. Undrawn years follow the rate settings
+        starting at the age shown, or as age:value pairs such as 70:-20,
+        one point per pair. The box lists the years as pairs while there
+        are gaps between them, and as a plain series once they are filled
+        in. Undrawn years follow the rate settings
         on the left; drawn years override them, and the chart above
         recomputes as you draw. Edit the series or paste a new one over it,
         then press apply series; values are kept to a tenth of a point
@@ -611,28 +614,51 @@
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px;">
         <button class="mast-btn" id="tiltReset" type="button">reset shape</button>
         <button class="mast-btn" id="tiltConnect" type="button">connect points</button>
+      </div>
+      <svg id="tiltStrip" width="100%" viewBox="0 0 800 192"
+           style="display:block; margin-top:6px; touch-action:none; cursor:crosshair;"></svg>
+      <textarea id="tiltText" rows="2" spellcheck="false"
+        aria-label="Changes in spending from the year before in percent, one per year"
+        style="width:100%; margin-top:8px; font-family:inherit; font-size:12px;
+               font-variant-numeric:tabular-nums; color:var(--ink);
+               border:1px solid var(--rule); border-radius:3px; padding:5px 7px;
+               background:var(--field); outline:none; resize:vertical;"></textarea>
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+                  font-size:12.5px; margin-top:6px;">
+        <button class="mast-btn" id="tiltApply" type="button">apply series</button>
+        <span style="color:var(--ink-soft);">from age
+          <input type="number" class="numbox" id="v-tiltFrom" step="1"
+            style="width:52px;" aria-label="Age of the first value in the series"></span>
         <span style="color:var(--ink-soft);">y-axis
           <input type="number" class="numbox" id="v-tiltYMin" step="1"
             style="width:52px;" aria-label="Tilt axis minimum percent"> to
           <input type="number" class="numbox" id="v-tiltYMax" step="1"
             style="width:52px;" aria-label="Tilt axis maximum percent"> %</span>
+        <span id="tiltMsg" style="color:var(--ink-soft);"></span>
       </div>
-      <svg id="tiltStrip" width="100%" viewBox="0 0 800 192"
-           style="display:block; margin-top:6px; touch-action:none; cursor:crosshair;"></svg>
-      <div style="font-size:11px; color:var(--ink-soft); line-height:1.45;">
-        Draw: each year's change in spending from the year before, in
-        percent. The first retirement year is the anchor that later changes
-        are measured from, so no change applies to it. Undrawn years follow
-        the Spending tilt setting on the left; drawn years override it, and
-        the chart above recomputes as you draw. Values left of the dashed
-        retirement marker are stored but inactive (the dotted line is the
-        setting, the dashes are drawn values): no tilt applies during the
-        working years, where spending does not change from one year to the
-        next. Move the retirement age to bring stored values into the
-        scenario. Connect points fills the
+      <div style="font-size:11px; color:var(--ink-soft); line-height:1.45; margin-top:6px;">
+        Draw the curve, or type into the box below: it holds the drawn
+        years as a series of changes in spending from the year before, in
+        percent, one per year, starting at the age shown, or as age:value
+        pairs such as 70:-1, one point per pair, with connect points drawing
+        the line between them. The box lists the years as pairs while there
+        are gaps between them, and as a plain series once they are filled
+        in. The first
+        retirement year is the anchor that later changes are measured from,
+        so no change applies to it; with nothing drawn, from age shows the
+        year after the anchor. Undrawn years follow the Spending tilt setting
+        on the left; drawn years override it, and the chart above recomputes
+        as you draw. Edit the series or paste a new one over it, then press
+        apply series; values are kept to a tenth of a point between -60% and
+        60%, and anything rounded, clamped, or dropped is reported next to
+        the button. Values left of the dashed retirement marker are stored
+        but inactive (the dotted line is the setting, the dashes are drawn
+        values): no tilt applies during the working years, where spending
+        does not change from one year to the next. Move the retirement age
+        to bring stored values into the scenario. Connect points fills the
         undrawn years between two drawn ones with a straight line. The y-axis
-        range above is a lens: narrowing it never changes
-        stored values, and values outside it draw pinned at the edge.
+        range is a lens: narrowing it never changes stored values, and values
+        outside it draw pinned at the edge.
       </div>
     </div>
   </div>
@@ -808,7 +834,7 @@
   of the information on this site or the appropriateness of any advice to your
   particular situation. Consult a qualified professional before making
   financial decisions.
-  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.09.12b</span>
+  <span class="build" id="buildStamp" style="display:block; margin-top:4px; font-size:10px; color:var(--ink-soft); opacity:0.8;">build 2026.09.30b</span>
 </footer>
 
 <div id="report" aria-hidden="true"></div>
@@ -939,62 +965,106 @@ function decodeCurve(body, g) {
   return out;
 }
 
-/* ---- typed return series ----
-   A series of annual real returns, in percent, one per year: the same drawn
-   curve read and written as text. Separators may be commas, semicolons,
-   spaces, tabs or newlines; a trailing percent sign is ignored; an empty slot
-   or "--" leaves that year undrawn, so a sparse curve survives being read out
-   and applied back.
+/* ---- typed series ----
+   A series of per-year values in percent, one per year: the same drawn
+   curve read and written as text. Shared by both strips, each passing its
+   own grid: annual real returns on the rate strip, changes in spending from
+   the year before on the tilt strip. Separators may be commas, semicolons,
+   spaces, tabs or newlines; a trailing percent sign, with or without /yr,
+   is ignored, and a Unicode minus reads as a minus, since a pasted table
+   often carries both; an empty slot or "--" leaves that year undrawn, so a
+   sparse curve survives being read out and applied back.
+
+   A few points can be given as age:value pairs instead. If any token has a
+   colon the whole list is read that way: each pair lands on its own age,
+   the list needs no start age, a repeated age keeps its last value, and a
+   token without a colon is reported and skipped rather than guessed at.
+   Pairs come back in the same positional shape, values from the lowest
+   age, so what follows never knows which form was typed.
 
    A token that is not a number holds its place rather than collapsing the
    list, so one typo in a thirty-year paste cannot shift every year after it.
    Clamping and rounding are counted and returned, for the page to report:
    changing someone's numbers silently is worse than refusing them. */
-function parseRateList(text) {
+function parseSeries(text, g) {
   const s = String(text).trim();
   const raw = s === "" ? []
     : (s.indexOf(",") >= 0 ? s.split(",") : s.split(/[;\s]+/));
   while (raw.length && raw[raw.length - 1].trim() === "") raw.pop();
+  const anchors = raw.some(t => t.indexOf(":") >= 0);
   const values = [], bad = [];
-  let clamped = 0, snapped = 0;
+  let clamped = 0, snapped = 0, repeated = 0;
+  const numOf = t => {
+    const u = t.replace(/\u2212/g, "-").replace(/%(\/yr)?$/, "").trim();
+    return u === "" ? NaN : Number(u);
+  };
+  const keep = v => {                    // clamp and snap, counting each
+    const v1 = snapTo(g, v);
+    if (v < g.lo || v > g.hi) clamped++;
+    else if (Math.abs(v1 - v) > 1e-9) snapped++;
+    return v1;
+  };
+  if (!anchors) {
+    for (const tok of raw) {
+      const t = tok.trim();
+      if (t === "" || t === "-" || t === "--") { values.push(undefined); continue; }
+      const v = numOf(t);
+      if (!Number.isFinite(v)) { bad.push(t); values.push(undefined); continue; }
+      values.push(keep(v));
+    }
+    return { values, from: null, anchors, bad, clamped, snapped, repeated };
+  }
+  const byAge = {};
   for (const tok of raw) {
     const t = tok.trim();
-    if (t === "" || t === "-" || t === "--") { values.push(undefined); continue; }
-    const v = Number(t.replace(/%$/, ""));
-    if (!Number.isFinite(v)) { bad.push(t); values.push(undefined); continue; }
-    const snapped1 = snapTo(GRID.rate, v);
-    if (v < GRID.rate.lo || v > GRID.rate.hi) clamped++;
-    else if (Math.abs(snapped1 - v) > 1e-9) snapped++;
-    values.push(snapped1);
+    if (t === "" || t === "-" || t === "--") continue;
+    const i = t.indexOf(":");
+    const left = i < 0 ? "" : t.slice(0, i).trim();
+    const age = left === "" ? NaN : Number(left);
+    const v = i < 0 ? NaN : numOf(t.slice(i + 1));
+    if (!Number.isInteger(age) || !Number.isFinite(v)) { bad.push(t); continue; }
+    if (byAge[age] !== undefined) repeated++;
+    byAge[age] = keep(v);
   }
-  return { values, bad, clamped, snapped };
+  const ages = Object.keys(byAge).map(Number).sort((a, b) => a - b);
+  const from = ages.length ? ages[0] : null;
+  for (let a = from; ages.length && a <= ages[ages.length - 1]; a++)
+    values.push(byAge[a]);
+  return { values, from, anchors, bad, clamped, snapped, repeated };
 }
-/* Replaces the drawn curve with the series, first value at startAge: the text
-   box shows the whole schedule, so applying it makes the curve equal to what
-   the box says. Years outside the plan's span keep their place in the series
-   and are counted as dropped. */
-function applyRateList(values, startAge) {
+/* Builds a drawn curve from the series, first value at startAge, for the
+   caller to install in place of the one drawn: the text box shows the whole
+   schedule, so applying it makes the curve equal to what the box says. Years
+   outside the plan's span keep their place in the series and are counted as
+   dropped. */
+function applySeries(values, startAge) {
   const A0 = Number.isFinite(state.startAge) ? state.startAge : 20;
   const E = Math.max(Number.isFinite(state.endAge) ? state.endAge : A0 + 1, A0 + 1);
   const from = Math.round(Number.isFinite(startAge) ? startAge : A0 + 1);
-  rateCurve = {};
+  const map = {};
   let applied = 0, dropped = 0;
   for (let i = 0; i < values.length; i++) {
     if (values[i] === undefined) continue;
     const age = from + i;
     if (age <= A0 || age > E) { dropped++; continue; }
-    rateCurve[age] = values[i];
+    map[age] = values[i];
     applied++;
   }
-  return { applied, dropped, from };
+  return { map, applied, dropped, from };
 }
-function formatRateList(map) {
+/* Reads a drawn curve back as text. While the drawn years have gaps between
+   them the box lists age:value pairs, so a few typed anchors come back as
+   the anchors typed; once every year from the first to the last is drawn it
+   lists the plain series from the first age, so a connected or painted
+   curve reads as the schedule it is. */
+function formatSeries(map) {
   const ages = Object.keys(map).map(Number).sort((a, b) => a - b);
-  if (!ages.length) return { text: "", from: null };
+  if (!ages.length) return { text: "", from: null, pairs: false };
   const a0 = ages[0], a1 = ages[ages.length - 1], parts = [];
-  for (let a = a0; a <= a1; a++)
-    parts.push(map[a] === undefined ? "--" : map[a].toFixed(1));
-  return { text: parts.join(", "), from: a0 };
+  const pairs = a1 - a0 + 1 > ages.length;
+  if (pairs) for (const a of ages) parts.push(a + ":" + map[a].toFixed(1));
+  else for (let a = a0; a <= a1; a++) parts.push(map[a].toFixed(1));
+  return { text: parts.join(", "), from: a0, pairs };
 }
 /* The one steady rate that compounds to the same cumulative growth as a
    schedule over n years: the number the tool's single-rate input would have
@@ -2134,9 +2204,10 @@ function buildInputs() {
       '<details class="adv sub"' + (state.tiltOn ? " open" : "") + '>' +
       '<summary>Spending tilt curve</summary>' +
       '<label class="adv-check"><input type="checkbox" id="v-tiltOn"> ' +
-        'Draw a per-year spending change</label>' +
+        'Draw or type a per-year spending change</label>' +
       '<div class="note" style="font-size:11px; color:var(--ink-soft); line-height:1.4;">' +
-        'Adds a drawing strip under the chart. Drawn years set how spending ' +
+        'Adds a strip under the chart where each year\u2019s change in ' +
+        'spending can be drawn or typed. Drawn years set how spending ' +
         'changes that year, as a percent of the year before; undrawn years ' +
         'follow the tilt setting.</div>' +
       '</details>' +
@@ -3847,7 +3918,7 @@ function renderCurveStrip() {
     : "";
   /* the text box holds the drawn schedule; left alone while it has focus,
      so typing is never overwritten mid-edit */
-  const listed = formatRateList(rateCurve);
+  const listed = formatSeries(rateCurve);
   const txt = document.getElementById("curveText");
   if (txt && document.activeElement !== txt) txt.value = listed.text;
   const fromBox = document.getElementById("v-curveFrom");
@@ -3988,10 +4059,11 @@ function hasGaps(map) {
     const txt = document.getElementById("curveText");
     const fromBox = document.getElementById("v-curveFrom");
     if (!txt) return;
-    const p = parseRateList(txt.value);
+    const p = parseSeries(txt.value, GRID.rate);
     const raw = fromBox && fromBox.value !== "" ? Number(fromBox.value) : NaN;
-    const r = applyRateList(p.values,
-      Number.isFinite(raw) ? raw : state.startAge + 1);
+    const r = applySeries(p.values, p.anchors ? p.from
+      : Number.isFinite(raw) ? raw : state.startAge + 1);
+    rateCurve = r.map;
     /* widen the lens to fit what was applied: a real series routinely runs
        past the default window, and a third of it pinned at the edge is not
        a view of anything. Narrowing back is the user's to do. */
@@ -4004,12 +4076,14 @@ function hasGaps(map) {
         state.curveYMax = clampVal("curveYMax", Math.ceil(hi / 5) * 5);
     }
     const msg = [r.applied + (r.applied === 1 ? " year" : " years") +
-                 " applied from age " + r.from];
+                 " applied" + (r.applied ? " from age " + r.from : "")];
     if (r.dropped) msg.push(r.dropped + " outside the scenario's years dropped");
     if (p.clamped) msg.push(p.clamped + " clamped to " + GRID.rate.lo +
                             "% to " + GRID.rate.hi + "%");
     if (p.snapped) msg.push(p.snapped + " rounded to a tenth");
-    if (p.bad.length) msg.push(p.bad.length + " not numbers, left undrawn");
+    if (p.bad.length) msg.push(p.bad.length + (p.anchors
+      ? " not age:value pairs, skipped" : " not numbers, left undrawn"));
+    if (p.repeated) msg.push(p.repeated + " repeated ages, last kept");
     const out = document.getElementById("curveMsg");
     if (out) out.textContent = msg.join("; ");
     render();
@@ -4113,6 +4187,16 @@ function renderTiltStrip() {
   svg.innerHTML = out;
   const tconn = document.getElementById("tiltConnect");
   if (tconn) tconn.disabled = !hasGaps(tiltCurve);
+  /* the text box holds the drawn series; left alone while it has focus, so
+     typing is never overwritten mid-edit. With nothing drawn, from age
+     shows the first year a change can apply to: the year after the anchor,
+     so the first typed value is never swallowed by the anchor cell */
+  const listed = formatSeries(tiltCurve);
+  const ttxt = document.getElementById("tiltText");
+  if (ttxt && document.activeElement !== ttxt) ttxt.value = listed.text;
+  const tfrom = document.getElementById("v-tiltFrom");
+  if (tfrom && document.activeElement !== tfrom)
+    tfrom.value = listed.from === null ? Math.round(g.R0) + 2 : listed.from;
   const box = document.getElementById("v-tiltOn");
   if (box) box.checked = !!state.tiltOn;
   const bMin = document.getElementById("v-tiltYMin"),
@@ -4181,6 +4265,45 @@ function tiltPaintAt(age, val) {
   });
   document.getElementById("tiltConnect").addEventListener("click", () => {
     if (connectGaps(tiltCurve, 10)) { render(); pushHistory(); }
+  });
+  /* apply series: the box is authoritative, so this replaces the drawn curve
+     with exactly what the box says, as on the rate strip. Values landing at
+     the anchor year or earlier are stored, as painted ones are, and counted
+     as inactive: a whole paste landing there would otherwise report success
+     while the chart stood still. */
+  document.getElementById("tiltApply").addEventListener("click", () => {
+    const txt = document.getElementById("tiltText");
+    const fromBox = document.getElementById("v-tiltFrom");
+    if (!txt) return;
+    const p = parseSeries(txt.value, GRID.tilt);
+    const raw = fromBox && fromBox.value !== "" ? Number(fromBox.value) : NaN;
+    const Rt = Math.round(state.retAge);
+    const r = applySeries(p.values, p.anchors ? p.from
+      : Number.isFinite(raw) ? raw : Rt + 2);
+    tiltCurve = r.map;
+    /* widen the lens to fit what was applied, to whole percents; narrowing
+       back is the user's to do */
+    const vals = Object.keys(tiltCurve).map(a => tiltCurve[a]);
+    if (vals.length) {
+      const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+      if (lo < state.tiltYMin) state.tiltYMin = clampVal("tiltYMin", Math.floor(lo));
+      if (hi > state.tiltYMax) state.tiltYMax = clampVal("tiltYMax", Math.ceil(hi));
+    }
+    const inactive = Object.keys(tiltCurve).filter(a => Number(a) <= Rt + 1).length;
+    const msg = [r.applied + (r.applied === 1 ? " year" : " years") +
+                 " applied" + (r.applied ? " from age " + r.from : "")];
+    if (inactive) msg.push(inactive + " stored at the anchor year or earlier, inactive");
+    if (r.dropped) msg.push(r.dropped + " outside the scenario's years dropped");
+    if (p.clamped) msg.push(p.clamped + " clamped to " + GRID.tilt.lo +
+                            "% to " + GRID.tilt.hi + "%");
+    if (p.snapped) msg.push(p.snapped + " rounded to a tenth");
+    if (p.bad.length) msg.push(p.bad.length + (p.anchors
+      ? " not age:value pairs, skipped" : " not numbers, left undrawn"));
+    if (p.repeated) msg.push(p.repeated + " repeated ages, last kept");
+    const out = document.getElementById("tiltMsg");
+    if (out) out.textContent = msg.join("; ");
+    render();
+    pushHistory();
   });
   document.addEventListener("change", e => {
     if (!e.target) return;
